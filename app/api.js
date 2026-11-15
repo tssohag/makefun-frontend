@@ -1,7 +1,9 @@
 // make.fun's public API, read-only GET (CORS open). One in-memory cache for every view:
-// answers live TTL ms, a request already in flight is shared, and a stale answer is
-// revalidated with its ETag (If-None-Match): a 304 reuses the cached object as is, so a
-// view can tell "nothing changed" by identity and skip its re-render.
+// an answer lives TTL ms, a request already in flight is shared, and a stale answer is
+// revalidated by ETag. make.fun's 304s carry no CORS header, so the browser's HTTP cache
+// sends If-None-Match itself (cache: 'no-cache') and serves the 304 as its stored 200; an
+// unchanged ETag hands back the cached object unparsed, and views skip their re-render
+// when they get the same object. A failed revalidation falls back to the stale answer.
 
 export const API = 'https://make.fun/api';
 const TTL = 30e3;
@@ -15,12 +17,19 @@ export function cachedFetch(path, fresh = false) {
   return inflight.get(path);
 }
 
-async function revalidate(path, hit) {
-  const res = await fetch(API + path, { cache: 'no-store', signal: AbortSignal.timeout(20e3), headers: hit?.etag ? { 'If-None-Match': hit.etag } : {} });
-  if (res.status === 304 && hit) return (hit.at = Date.now()), hit.data;
+export async function revalidate(path, hit) {
+  let res;
+  try {
+    res = await fetch(API + path, { cache: 'no-cache', signal: AbortSignal.timeout(20e3) });
+  } catch (e) {
+    if (hit) return hit.data;
+    throw e;
+  }
+  const etag = res.headers.get('ETag');
+  if (hit && etag && etag === hit.etag) return (hit.at = Date.now()), hit.data;
   if (!res.ok) throw new Error(res.status === 404 ? 'Not found' : `make.fun answered ${res.status}`);
   const data = await res.json();
-  cache.set(path, { data, etag: res.headers.get('ETag'), at: Date.now() });
+  cache.set(path, { data, etag, at: Date.now() });
   return data;
 }
 

@@ -1,7 +1,7 @@
 // #/bounty/<slug>/leaderboard: one request (?rows=first) holds every row; only the visible
 // page of PER rows is in the DOM. Paging and the handle search re-draw the tbody alone.
 import { getLeaderboard } from '../api.js';
-import { esc, crumbs, notice } from '../app.js';
+import { esc, crumbs, notice, fmtScore } from '../app.js';
 
 const PER = 50;
 const st = { data: null, rows: [], page: 0, q: '' };
@@ -32,9 +32,9 @@ ${st.rows.length ? `<div class="panel"><div class="lb-tools"><input id="who" typ
 
 // The full rows (top ten) and the light `rest` rows, in one shape.
 export function normalizeRows(lb) {
-  const k = lb.rank_key, fmt = k === 'judge' ? (v) => (v / 1e4).toFixed(1) + '%' : (v, d) => d ?? v;
+  const k = lb.rank_key;
   const row = (r, v, d, valid) => ({ rank: r.rank, handle: r.handle, title: r.title, house: r.house || r.baseline, at: r.received_at,
-    score: v == null ? '—' : fmt(v, d), iv: r.interval ? `${fmt(+r.interval.low, r.interval.low)} – ${fmt(+r.interval.high, r.interval.high)}` : '', valid });
+    score: fmtScore(k, v, d), iv: r.interval ? `${fmtScore(k, +r.interval.low)} – ${fmtScore(k, +r.interval.high)}` : '', valid });
   return [...(lb.entries || []).map((e) => row(e, e.values?.[k], e.display?.[k], e.values?.valid ?? +(e.rank != null))),
     ...(lb.rest || []).map((r) => row(r, r.value, r.display, +(r.rank != null)))];
 }

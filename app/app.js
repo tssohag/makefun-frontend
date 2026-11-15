@@ -60,15 +60,17 @@ export async function renderBoard(el, live) {
   if (!cats.includes(board.cat)) board.cat = 'All';
   const total = list.reduce((s, b) => s + pot(b), 0), entries = list.reduce((s, b) => s + (b.submissionCount || 0), 0);
   if (!live || !el.querySelector('.grid')) {
-    el.innerHTML = `<section class="hero"><div><h1>Live bounties</h1><p class="stats"></p></div>
-<div class="tools"><div class="chips" role="group" aria-label="Category"></div>
-<label class="sort">Sort <select id="sort">${Object.entries(SORTS).map(([k, [t]]) => `<option value="${k}">${t}</option>`).join('')}</select></label></div></section>
+    el.innerHTML = `<section class="hero"><div><h1>Live bounties</h1><p class="muted">Every make.fun bounty still taking entries, with its live pot, fee and clock.</p></div>
+<dl class="kpis"></dl></section><div class="tools"><div class="chips" role="group" aria-label="Category"></div>
+<label class="sort">Sort <select id="sort">${Object.entries(SORTS).map(([k, [t]]) => `<option value="${k}">${t}</option>`).join('')}</select></label></div>
 <div class="layout"><div class="grid"></div><aside class="side"></aside></div>`;
     el.querySelector('#sort').value = board.sort;
     el.addEventListener('change', (e) => { if (e.target.id === 'sort') board.sort = e.target.value, drawCards(el); });
     el.addEventListener('click', (e) => { const c = e.target.closest('[data-cat]'); if (c) board.cat = c.dataset.cat, drawCards(el); });
   }
-  el.querySelector('.stats').textContent = `${list.length} taking entries · ${money(total)} in live pots · ${entries.toLocaleString('en-US')} entries so far`;
+  const next = list.reduce((m, b) => (!m || Date.parse(b.deadline) < Date.parse(m.deadline) ? b : m), null);
+  el.querySelector('.kpis').innerHTML = [['Taking entries', list.length], ['In live pots', money(total)], ['Entries so far', entries.toLocaleString('en-US')]]
+    .map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('') + (next ? `<div><dt>Next to close</dt><dd>${countdown(next.deadline)}</dd></div>` : '');
   el.querySelector('.chips').innerHTML = cats.map((c) => `<button type="button" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
   if (top) el.querySelector('.side').innerHTML = topBuilders(top.items.slice(0, 6));
   drawCards(el);
@@ -96,7 +98,7 @@ export function bountyCard(b) {
 <p class="due">Deadline ${fmtDate(b.deadline)}</p></a>`;
 }
 
-const topBuilders = (items) => `<h2>Top builders</h2><ol class="tops">${items.map((u) => `<li><a href="#/u/${encodeURIComponent(u.handle)}">${avatar(u.avatar?.url_small || u.image, u.handle)}<span><b>${esc(u.handle)}</b><small>${u.record.competitions_won} wins · ${money(u.record.prize_usd)} won</small></span></a></li>`).join('')}</ol><a class="more" href="#/builders">All top builders →</a>`;
+const topBuilders = (items) => `<h2>Top builders</h2><ol class="tops">${items.map((u) => `<li><a href="#/u/${encodeURIComponent(u.handle)}">${avatar(u.avatar?.url_small || u.image, u.handle)}<span><b>${esc(u.handle)}</b><small>${u.record.competitions_won} win${u.record.competitions_won === 1 ? '' : 's'} · ${money(u.record.prize_usd)} won</small></span></a></li>`).join('')}</ol><a class="more" href="#/builders">All top builders →</a>`;
 
 // ---- live time ----
 export function tickCountdowns() {
@@ -120,6 +122,7 @@ function stamp() {
 }
 
 // ---- shared helpers for every view ----
+export const fmtScore = (key, v, d) => (v == null ? '—' : key === 'judge' ? (v / 1e4).toFixed(1) + '%' : d ?? String(v));
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 export function money(v) {
   const n = Number(v);

@@ -1,6 +1,6 @@
 // #/u/<handle>: avatar, bio, links, record, entries with placings, payouts. #/builders: rankings.
 import { getProfile, getTopBuilders } from '../api.js';
-import { esc, money, fmtDate, avatar, crumbs } from '../app.js';
+import { esc, money, fmtDate, avatar, crumbs, fmtScore } from '../app.js';
 
 let shown = null;
 
@@ -20,7 +20,7 @@ ${p.bio ? `<p>${esc(p.bio)}</p>` : ''}<p class="links">${links.map(([t, u]) => `
   .map(([k, v]) => `<div class="tile"><b>${esc(v ?? 0)}</b><small>${k}</small></div>`).join('')}</section>
 <div class="cols"><section class="panel"><h2>Entries <small>${sols.length}</small></h2>${sols.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>Bounty</th><th>Entry</th><th class="num">Score</th><th class="num">Place</th><th class="num">Prize</th></tr></thead><tbody>
 ${sols.map((s) => `<tr><td><a href="#/bounty/${encodeURIComponent(s.competition.slug)}">${esc(s.competition.title)}</a><br><small class="muted">${esc(s.competition.category || '')} · ${s.competition.status === 'resolved' ? 'resolved' : 'open'}</small></td>
-<td class="ttl">${esc(s.title || '—')}</td><td class="num">${esc(s.score?.display ?? '—')}</td><td class="num">${s.placement ? `<b>#${s.placement}</b>` : '—'}</td><td class="num">${s.prize_usd ? `<b class="win">${money(s.prize_usd)}</b>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No public entries yet.</p>'}</section>
+<td class="ttl">${esc(s.title || '—')}</td><td class="num">${esc(fmtScore(s.score?.column?.key, s.score?.value, s.score?.display))}</td><td class="num">${s.placement ? `<b>#${s.placement}</b>` : '—'}</td><td class="num">${s.prize_usd ? `<b class="win">${money(s.prize_usd)}</b>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No public entries yet.</p>'}</section>
 <section class="panel"><h2>Winnings <small>${pays.length} payouts</small></h2>${pays.length ? `<ul class="pays">${pays.map((x) => `<li><b class="win">${money(x.amount_usd)}</b> <span>${x.place ? `#${x.place} in ` : ''}<a href="#/bounty/${encodeURIComponent(x.competition.slug)}">${esc(x.competition.title)}</a><br><small class="muted">${fmtDate(x.paid_at)} · <a href="${esc(x.explorer_url)}" target="_blank" rel="noopener">tx ↗</a></small></span></li>`).join('')}</ul>` : '<p class="muted">No payouts yet.</p>'}</section></div>`;
 }
 
