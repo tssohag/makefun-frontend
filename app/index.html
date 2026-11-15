@@ -3,12 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Live make.fun bounties: pots, entry fees, countdowns, leaderboards and profiles.">
+<meta name="theme-color" content="#c2185b">
 <title>make.fun bounties</title>
+<link rel="preconnect" href="https://make.fun" crossorigin>
 <link rel="stylesheet" href="style.css">
-<script type="module" src="main.js"></script>
+<link rel="modulepreload" href="api.js">
+<script type="module" src="app.js"></script>
 </head>
 <body>
-<header><a href="#/">make.fun bounties</a></header>
-<main id="app"></main>
+<header class="top">
+<a class="logo" href="#/" aria-label="make.fun bounties home"><b>make</b>.fun<small>bounties</small></a>
+<nav id="nav" aria-label="Main"><a href="#/">Bounties</a><a href="#/builders">Top builders</a></nav>
+<form id="search" role="search"><input id="q" type="search" placeholder="Search bounties or @handle" aria-label="Search bounties, or go to a profile with @handle" autocomplete="off"></form>
+<span id="live" class="live" title="Data refreshes every 60 seconds">Live</span>
+</header>
+<main id="app" aria-live="polite"></main>
+<footer>Unofficial frontend · data from the public <a href="https://make.fun/api/openapi.json">make.fun API</a></footer>
 </body>
 </html>
