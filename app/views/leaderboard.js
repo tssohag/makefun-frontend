@@ -2,8 +2,9 @@
 // (cached if the board showed it) for the header: live pot, time left, paid places. Only the
 // visible page of PER rows is in the DOM; paging and the handle search re-draw the tbody alone.
 import { getLeaderboard, getBounty } from '../api.js';
-import { esc, crumbs, notice, fmtScore, money, pot, ordinal, countdown, timeBar, shortDate } from '../app.js';
+import { esc, notice, money, num, pot, ordinal, countdown, timeBar, oddsFor, perEntry } from '../app.js';
 import { paidPlaces } from '../bounty.js';
+import { crumbs, fmtScore, shortDate } from './shared.js';
 
 export async function renderLeaderboard(el, slug, live) {
   const [lb, b] = await Promise.all([getLeaderboard(slug, live), getBounty(slug, live).catch(() => null)]);
@@ -35,16 +36,16 @@ ${st.rows.length ? `<div class="panel"><div class="lb-tools"><input id="who" typ
 
 // Live pot, time left, fee, entries, and the paid places with equal prizes run together (4th–10th $22.88).
 export function leaderboardHeader(b) {
-  const runs = [];
+  const runs = [], o = oddsFor(b);
   for (const r of st.prizes) {
     const last = runs.at(-1);
     if (last && last.amountUsd === r.amountUsd) last.to = r.place; else runs.push({ ...r, to: r.place });
   }
-  return `<div class="lbstats"><div class="potbig"><small>Live pot</small><b>${money(pot(b))}</b></div>
+  return `<div class="stats"><div class="potbig"><small>Live pot</small><b>${money(pot(b))}</b></div>
 <div><small>Time left</small><b>${countdown(b.deadline)}</b>${timeBar(b.opensAt || b.publishedAt, b.deadline)}</div>
 <div><small>Entry fee</small><b>${b.entryFeeUsd ? money(b.entryFeeUsd) : 'Free'}</b></div>
-<div><small>Entries</small><b>${(b.submissionCount || 0).toLocaleString('en-US')}</b></div></div>
-<div class="places"><small>${st.prizes.length} paid places</small><ol>${runs.map((r) => `<li><b>${ordinal(r.place)}${r.to > r.place ? `–${ordinal(r.to)}` : ''}</b> ${money(r.amountUsd)}</li>`).join('')}</ol></div>`;
+<div><small>Entries</small><b>${num(b.submissionCount)}</b></div></div>
+<div class="places"><small>${st.prizes.length} paid places · ${o.per == null ? 'no entries yet' : `${perEntry(o.per)} per entry · ${o.label}`}</small><ol>${runs.map((r) => `<li><b>${ordinal(r.place)}${r.to > r.place ? `–${ordinal(r.to)}` : ''}</b> ${money(r.amountUsd)}</li>`).join('')}</ol></div>`;
 }
 
 // Only the visible page of PER rows is ever rendered.

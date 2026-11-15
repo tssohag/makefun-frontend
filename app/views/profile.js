@@ -1,7 +1,8 @@
 // #/u/<handle>: avatar, handle, bio, links; totals (wins, winnings, entries); the account's entries
 // grouped by bounty with best score, place and payout; payouts with their transactions. #/builders: rankings.
 import { getProfile, getTopBuilders } from '../api.js';
-import { esc, money, fmtDate, shortDate, avatar, crumbs, fmtScore, ordinal } from '../app.js';
+import { esc, money, fmtDate, ordinal } from '../app.js';
+import { avatar, crumbs, fmtScore, shortDate } from './shared.js';
 
 let shown = null;
 

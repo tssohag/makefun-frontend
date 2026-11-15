@@ -3,23 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Live make.fun bounties: pots, entry fees, countdowns, leaderboards and profiles.">
+<meta name="description" content="Live make.fun bounties: pots, entry fees, your odds, countdowns, leaderboards and profiles.">
 <meta name="theme-color" content="#c2185b">
 <title>make.fun bounties</title>
 <link rel="preconnect" href="https://make.fun" crossorigin>
 <link rel="stylesheet" href="style.css">
 <link rel="modulepreload" href="api.js">
 <link rel="modulepreload" href="bounty.js">
+<script>try{document.documentElement.dataset.theme=localStorage.theme||''}catch(e){}</script>
 <script type="module" src="app.js"></script>
 </head>
 <body>
 <header class="top">
 <a class="logo" href="#/" aria-label="make.fun bounties home"><b>make</b>.fun<small>bounties</small></a>
-<nav id="nav"><a href="#/">Bounties</a><a href="#/builders">Top builders</a></nav>
-<form id="search" role="search">
-<input id="q" type="search" placeholder="Search bounties or @handle" aria-label="Search">
-</form>
+<nav id="nav" aria-label="Main"><a href="#/">Bounties</a><a href="#/builders">Builders</a><button type="button" data-search>Search</button></nav>
+<form id="search" role="search"><input id="q" type="search" placeholder="Search bounties or @handle" aria-label="Search"></form>
 <span id="live" class="live">Live</span>
+<button id="theme" type="button" aria-label="Dark theme" aria-pressed="false"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg></button>
 </header>
 <main id="app"></main>
 <footer>Unofficial frontend · data from the public <a href="https://make.fun/api/openapi.json">make.fun API</a></footer>

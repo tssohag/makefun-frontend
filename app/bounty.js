@@ -1,10 +1,8 @@
-// The bounty detail: the right pane of the board on a wide screen, the whole page on a phone.
-// It paints at once from the board's list item (pot, fee, entries, rewards), then from the full
-// bounty (dates, rules). The 60 s refresh repaints only the stats and rewards, and only on change.
+// The bounty detail pane (the page on a phone): painted from the list item, then the full bounty; refresh patches.
 import { getBounty } from './api.js';
-import { esc, money, pot, ordinal, fmtDate, dayTime, countdown, timeBar, notice } from './app.js';
+import { esc, money, num, pot, ordinal, fmtDate, countdown, timeBar, notice, oddsFor, perEntry } from './app.js';
 
-let shown = null; // the bounty object on screen
+let shown = null;
 
 export async function renderBountyDetail(pane, slug, item, live = false) {
   if (!live && pane.dataset.slug !== slug) {
@@ -19,7 +17,7 @@ export async function renderBountyDetail(pane, slug, item, live = false) {
     if (!item && pane.dataset.slug === slug) pane.innerHTML = notice('Could not load this bounty', e.message, true);
     return;
   }
-  if (pane.dataset.slug !== slug || b === shown) return; // another bounty was picked, or nothing changed
+  if (pane.dataset.slug !== slug || b === shown) return;
   if (live && shown && pane.querySelector('.stats')) patchDetail(pane, b);
   else paintDetail(pane, b);
   shown = b;
@@ -32,9 +30,10 @@ export function paintDetail(pane, b) {
 <div class="tags"><span class="pill">${esc(b.category || 'Bounty')}</span> ${statusChip(b)} <span class="muted">by ${esc(b.sponsor?.name || 'make.fun')}</span></div>
 <h1>${esc(b.title)}</h1><p class="lead">${esc(b.summary || '')}</p>
 <div class="stats"></div>
+<p class="odds"></p>
 <p class="actions"></p>
-<dl class="dates"><div><dt>Opened</dt><dd title="${fmtDate(b.opensAt || b.publishedAt)}">${dayTime(b.opensAt || b.publishedAt)}</dd></div><div><dt>Deadline</dt><dd title="${fmtDate(b.deadline)}">${dayTime(b.deadline)}</dd></div>
-<div><dt>${b.resolvedAt ? 'Results published' : 'Results by'}</dt><dd title="${fmtDate(results)}">${dayTime(results)}</dd></div></dl>
+<dl class="dates"><div><dt>Opened</dt><dd title="${fmtDate(b.opensAt || b.publishedAt)}">${fmtDate(b.opensAt || b.publishedAt, 1)}</dd></div><div><dt>Deadline</dt><dd title="${fmtDate(b.deadline)}">${fmtDate(b.deadline, 1)}</dd></div>
+<div><dt>${b.resolvedAt ? 'Results published' : 'Results by'}</dt><dd title="${fmtDate(results)}">${fmtDate(results, 1)}</dd></div></dl>
 <section class="rewards-box"></section>
 <article class="prose"><h2>Description</h2>${md(b.description)}
 ${b.resolution?.summary ? `<h2>How it is scored</h2><p>${esc(b.resolution.summary)}</p>` : ''}
@@ -42,13 +41,14 @@ ${b.rules ? `<details><summary>Full rules</summary>${md(b.rules)}</details>` : '
   patchDetail(pane, b, lb);
 }
 
-// The parts that move while a bounty is open: pot, clock, entries, rewards.
 function patchDetail(pane, b, lb = `#/bounty/${encodeURIComponent(b.slug)}/leaderboard`) {
-  const n = (b.submissionCount || 0).toLocaleString('en-US'), fees = Number(b.entryFeesUsd || 0);
+  const n = num(b.submissionCount), fees = Number(b.entryFeesUsd || 0), o = oddsFor(b);
   pane.querySelector('.stats').innerHTML = `<div class="potbig"><small>Live pot</small><b>${money(pot(b))}</b>${fees ? `<em>${money(b.rewardAmount)} reward + ${money(fees)} from ${b.entryFeePayers} entry fees</em>` : '<em>Reward, paid in USDC</em>'}</div>
 <div><small>Time left</small><b>${countdown(b.deadline)}</b>${timeBar(b.opensAt || b.publishedAt, b.deadline)}</div>
 <div><small>Entry fee</small><b class="${b.entryFeeUsd ? 'fee' : 'free'}">${b.entryFeeUsd ? money(b.entryFeeUsd) : 'Free'}</b></div>
 <div><small>Entries</small><b><a href="${lb}">${n}</a></b></div>`;
+  pane.querySelector('.odds').innerHTML = `<small>Your odds</small> <span><b>${o.per == null ? '—' : perEntry(o.per)}</b> per entry</span>
+<span><b>${o.places}</b> paid places</span> <span>${!o.n ? 'no entries yet' : o.n <= o.places ? '<b>every entry</b> paid now' : `<b>1 in ${num(Math.round(o.ratio))}</b> entries paid`}</span>`;
   pane.querySelector('.actions').innerHTML = `<a class="btn" href="https://make.fun/bounty/${encodeURIComponent(b.slug)}" target="_blank" rel="noopener">Enter on make.fun ↗</a>
 <a class="btn ghost" href="${lb}">Leaderboard · ${n} entries →</a>`;
   pane.querySelector('.rewards-box').innerHTML = rewardsTable(b);
@@ -61,7 +61,6 @@ function statusChip(b) {
   return `<span class="chip ${cls}">${esc(t)}</span>`;
 }
 
-// One row a paid place, its bar proportional to what it pays now, with the base and the fee share.
 export function rewardsTable(b) {
   const rows = paidPlaces(b);
   const fees = rows.some((r) => Number(r.feeShareUsd) > 0), max = Math.max(...rows.map((r) => Number(r.amountUsd)), 1);
@@ -73,7 +72,7 @@ ${b.entryFeeUsd ? '<p class="muted note">The pot grows with every entry fee paid
 export const paidPlaces = (b) => (b.rewardsNow?.length ? b.rewardsNow
   : Object.entries(b.rewards || {}).map(([place, v]) => ({ place: +place, baseUsd: v, feeShareUsd: 0, amountUsd: v })));
 
-// A small, safe Markdown subset: everything is escaped first; headings, lists, code, bold, links.
+// Safe Markdown subset: escaped first.
 export function md(src = '') {
   const out = [];
   let list = null, code = null, para = [];
