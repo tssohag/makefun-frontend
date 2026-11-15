@@ -15,7 +15,7 @@ export async function renderLeaderboard(el, slug, live) {
     el.innerHTML = `${crumbs([c.title || slug, back], ['Leaderboard'])}
 <section class="head-row"><div><h1>${esc(c.title || slug)} <span class="muted">leaderboard</span></h1>
 <p class="lb-meta"></p></div><a class="btn ghost" href="${back}">Bounty details</a></section>
-${st.rows.length ? `<div class="panel"><div class="lb-tools"><input id="who" type="search" placeholder="Find a handle…" aria-label="Find a handle" value="${esc(st.q)}"><span class="count"></span></div>
+${st.rows.length ? `<div class="panel"><div class="lb-tools"><input id="who" type="search" placeholder="Find a handle…" aria-label="Find a handle" value="${esc(st.q)}"><span class="count"></span><nav class="pager" aria-label="Pages"><button type="button" data-go="-1">‹ Prev</button><span class="pg"></span><button type="button" data-go="1">Next ›</button></nav></div>
 <div class="scroll"><table class="tbl lb"><thead><tr><th class="num">Rank</th><th>Entrant</th><th>Entry</th><th class="num">${esc(col?.title || 'Score')}</th><th>Interval</th><th>Valid</th><th>Received</th></tr></thead><tbody></tbody></table></div>
 <nav class="pager" aria-label="Pages"><button type="button" data-go="-1">‹ Prev</button><span class="pg"></span><button type="button" data-go="1">Next ›</button></nav></div>`
     : notice(lb.phase?.placements_held ? 'Placements are held' : 'No entries yet', lb.phase?.placements_held ? 'This board lists its entries once the results are published.' : 'Be the first: enter from the bounty page.')}`;
@@ -51,10 +51,8 @@ function renderPage(el) {
 <td class="muted">${esc(r.iv) || '—'}</td><td>${r.valid ? '<span class="chip ok">✓ valid</span>' : '<span class="chip">✗</span>'}</td>
 <td class="muted">${shortDate(r.at)}</td></tr>`).join('') || `<tr><td colspan="7" class="muted">No handle matches “${esc(st.q)}”.</td></tr>`;
   el.querySelector('.count').textContent = `Showing ${rows.length ? st.page * PER + 1 : 0}–${Math.min(rows.length, st.page * PER + PER)} of ${rows.length.toLocaleString('en-US')}`;
-  el.querySelector('.pg').textContent = `Page ${st.page + 1} of ${pages}`;
-  const [prev, next] = el.querySelectorAll('[data-go]');
-  prev.disabled = st.page === 0;
-  next.disabled = st.page >= pages - 1;
+  for (const n of el.querySelectorAll('.pg')) n.textContent = `Page ${st.page + 1} of ${pages}`;
+  for (const b of el.querySelectorAll('[data-go]')) b.disabled = b.dataset.go < 0 ? st.page === 0 : st.page >= pages - 1;
 }
 
 const PER = 50;

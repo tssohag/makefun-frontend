@@ -13,7 +13,9 @@ const leaderboardView = () => import('./views/leaderboard.js');
 const profileView = () => import('./views/profile.js');
 
 export async function route(live = false) {
-  const [a, b, c] = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+  const [path, query] = location.hash.replace(/^#\/?/, '').split('?');
+  const [a, b, c] = path.split('/').map(decodeURIComponent);
+  if (!a && query) Object.assign(board, Object.fromEntries([...new URLSearchParams(query)].filter(([k]) => k === 'cat' || k === 'sort')));
   const run = !a ? renderBoard
     : a === 'bounty' && b && !c ? async (el, l) => (await bountyView()).renderBounty(el, b, l)
     : a === 'bounty' && b && c === 'leaderboard' ? async (el, l) => (await leaderboardView()).renderLeaderboard(el, b, l)
@@ -21,7 +23,7 @@ export async function route(live = false) {
     : a === 'builders' ? async (el, l) => (await profileView()).renderBuilders(el, l)
     : async (el) => { el.innerHTML = notice('Page not found', 'That address is not a page of this app.'); };
   const my = ++seq;
-  if (live) return view?.hash === location.hash && run(view.el, true).then(stamp, () => {});
+  if (live) return view?.path === path && run(view.el, true).then(stamp, () => {});
   window.__shotReady = false;
   $app.innerHTML = renderSkeleton(a);
   scrollTo(0, 0);
@@ -29,7 +31,7 @@ export async function route(live = false) {
   el.className = 'view';
   try { await run(el, false); } catch (e) { el.innerHTML = notice('Could not load this page', e.name === 'TimeoutError' ? 'make.fun took too long to answer.' : e.message, true); }
   if (my !== seq) return;
-  view = { el, hash: location.hash };
+  view = { el, path };
   $app.replaceChildren(el);
   document.title = (el.querySelector('h1')?.textContent || 'Bounties') + ' · make.fun';
   stamp();
@@ -64,10 +66,12 @@ export async function renderBoard(el, live) {
 }
 
 function updateCards(el) {
+  if (!SORTS[board.sort]) board.sort = 'soon';
   const q = $q.value.trim().toLowerCase();
   const list = liveBounties().filter((b) => (board.cat === 'All' || b.category === board.cat)
     && (!q || q[0] === '@' || `${b.title} ${b.category} ${b.summary}`.toLowerCase().includes(q))).sort(SORTS[board.sort][1]);
   for (const c of el.querySelectorAll('[data-cat]')) c.setAttribute('aria-pressed', c.dataset.cat === board.cat);
+  if (onBoard()) history.replaceState(null, '', board.cat === 'All' && board.sort === 'soon' ? '#/' : `#/?${new URLSearchParams({ cat: board.cat, sort: board.sort })}`);
   el.querySelector('.grid').innerHTML = list.map(bountyCard).join('')
     || notice('No live bounties match', q ? `Nothing matches “${q}”. Clear the search or pick another category.` : 'Every bounty here has closed. New ones open often: check back soon.');
   tickCountdowns();
@@ -78,7 +82,7 @@ export function bountyCard(b) {
   return `<a class="card" href="#/bounty/${encodeURIComponent(b.slug)}">
 <div class="meta"><span class="pill">${esc(b.category || 'Bounty')}</span><span>${esc(b.sponsor?.name || '')}</span></div>
 <h3>${esc(b.title)}</h3><p class="sum">${esc(b.summary || '')}</p>
-<div class="pot"><b>${money(pot(b))}</b> live pot${fees ? ` <em>incl. ${money(fees)} fees</em>` : ''}</div>
+<div class="pot"><b>${money(pot(b))}</b> live pot${fees ? ` <em>+${money(fees)} fees</em>` : ''}</div>
 <dl class="facts"><div><dt>Time left</dt><dd>${countdown(b.deadline)}</dd></div>
 <div><dt>Entry fee</dt><dd class="${b.entryFeeUsd ? 'fee' : ''}">${b.entryFeeUsd ? money(b.entryFeeUsd) : 'Free'}</dd></div>
 <div><dt>Entries</dt><dd>${(b.submissionCount || 0).toLocaleString('en-US')}</dd></div></dl>
@@ -132,20 +136,21 @@ const LIVE_MS = 60e3;
 const $app = document.getElementById('app');
 const $q = document.getElementById('q');
 let seq = 0;
-let view = null; // { el, hash } on screen
+let view = null; // { el, path } on screen
 const board = { cat: 'All', sort: 'soon', data: null };
 const SORTS = { soon: ['Ending soon', (x, y) => Date.parse(x.deadline) - Date.parse(y.deadline)],
   pot: ['Biggest pot', (x, y) => pot(y) - pot(x)], few: ['Fewest entries', (x, y) => x.submissionCount - y.submissionCount] };
 const pot = (b) => Number(b.potUsd ?? b.rewardAmount ?? 0);
+const onBoard = () => !location.hash.replace(/^#\/?/, '').split('?')[0];
 const liveBounties = () => (board.data?.items || []).filter((b) => !b.demo && Date.parse(b.deadline) > Date.now());
 
 document.getElementById('search').addEventListener('submit', (e) => {
   e.preventDefault();
   const v = $q.value.trim();
   if (v[0] === '@' && v.length > 1) location.hash = `#/u/${encodeURIComponent(v.slice(1))}`;
-  else if (location.hash.length > 2) location.hash = '#/';
+  else if (!onBoard()) location.hash = '#/';
 });
-$q.addEventListener('input', () => { if (location.hash.length <= 2 && view?.el.querySelector('.grid')) updateCards(view.el); });
+$q.addEventListener('input', () => { if (onBoard() && view?.el.querySelector('.grid')) updateCards(view.el); });
 document.addEventListener('click', (e) => { if (e.target.closest('[data-retry]')) route(); });
 addEventListener('hashchange', () => route());
 setInterval(tickCountdowns, 1e3);

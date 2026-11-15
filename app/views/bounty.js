@@ -13,13 +13,14 @@ export async function renderBounty(el, slug, live) {
   if (!live || !el.querySelector('.facts-box')) {
     el.innerHTML = `${crumbs([b.title])}
 <section class="head"><div><span class="pill">${esc(b.category || 'Bounty')}</span> ${statusChip(b)}
-<h1>${esc(b.title)}</h1><p class="lead">${esc(b.summary || '')}</p>
-<p class="actions"><a class="btn" href="${lb}">View leaderboard →</a> <a class="btn ghost" href="https://make.fun/bounty/${encodeURIComponent(b.slug)}" target="_blank" rel="noopener">Enter on make.fun ↗</a></p></div>
-<aside class="facts-box panel"></aside></section>
-<div class="cols"><article class="panel prose"><h2>Description</h2>${md(b.description)}
+<h1>${esc(b.title)}</h1><p class="lead">${esc(b.summary || '')}</p><div class="facts-box tiles"></div>
+<p class="actions"><a class="btn" href="${lb}">View leaderboard →</a> <a class="btn ghost" href="https://make.fun/bounty/${encodeURIComponent(b.slug)}" target="_blank" rel="noopener">Enter on make.fun ↗</a></p>
+<article class="panel prose"><h2>Description</h2>${md(b.description)}
 ${b.resolution?.summary ? `<h2>How it is scored</h2><p>${esc(b.resolution.summary)}</p>` : ''}
-${b.rules ? `<details><summary>Full rules</summary>${md(b.rules)}</details>` : ''}</article>
-<section class="panel rewards-box"></section></div>`;
+${b.rules ? `<details><summary>Full rules</summary>${md(b.rules)}</details>` : ''}</article></div>
+<aside class="side-col"><section class="panel rewards-box"></section>
+<section class="panel"><h2>Dates</h2><dl class="kv"><dt>Opens</dt><dd>${fmtDate(b.opensAt || b.publishedAt)}</dd><dt>Deadline</dt><dd>${fmtDate(b.deadline)}</dd>
+<dt>Status</dt><dd>${statusChip(b)}</dd><dt>Sponsor</dt><dd>${esc(b.sponsor?.name || '—')}</dd><dt>Category</dt><dd>${esc(b.category || '—')}</dd></dl></section></aside></section>`;
   }
   el.querySelector('.facts-box').innerHTML = keyFacts(b, lb);
   el.querySelector('.rewards-box').innerHTML = rewardsTable(b);
@@ -32,22 +33,20 @@ function statusChip(b) {
 }
 
 function keyFacts(b, lb) {
-  const fees = Number(b.entryFeesUsd || 0);
-  return `<div class="big"><small>Live pot</small><b>${money(b.potUsd ?? b.rewardAmount)}</b>${fees ? `<em>${money(b.rewardAmount)} reward + ${money(fees)} from ${b.entryFeePayers} entry fees</em>` : ''}</div>
-<dl class="kv"><dt>Time left</dt><dd>${countdown(b.deadline)}</dd>
-<dt>Entry fee</dt><dd>${b.entryFeeUsd ? money(b.entryFeeUsd) : 'Free'}</dd>
-<dt>Entries</dt><dd><a href="${lb}">${(b.submissionCount || 0).toLocaleString('en-US')}</a></dd>
-<dt>Opens</dt><dd>${fmtDate(b.opensAt || b.publishedAt)}</dd><dt>Deadline</dt><dd>${fmtDate(b.deadline)}</dd>
-<dt>Status</dt><dd>${statusChip(b)}</dd><dt>Sponsor</dt><dd>${esc(b.sponsor?.name || '—')}</dd></dl>`;
+  return [['Time left', countdown(b.deadline)], ['Entry fee', b.entryFeeUsd ? money(b.entryFeeUsd) : 'Free'],
+    ['Entries', `<a href="${lb}">${(b.submissionCount || 0).toLocaleString('en-US')}</a>`], ['Deadline', fmtDate(b.deadline).replace(/ \d{4},/, ',')]]
+    .map(([k, v]) => `<div class="tile"><small>${k}</small><b>${v}</b></div>`).join('');
 }
 
 export function rewardsTable(b) {
   const rows = b.rewardsNow?.length ? b.rewardsNow
     : Object.entries(b.rewards || {}).map(([place, v]) => ({ place: +place, baseUsd: v, feeShareUsd: 0, amountUsd: v }));
   const fees = rows.some((r) => Number(r.feeShareUsd) > 0);
-  return `<h2>Rewards <small>${rows.length} paid places</small></h2>${rows.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>Place</th>${fees ? '<th>Base</th><th>Fee share</th>' : ''}<th class="num">Pays now</th></tr></thead><tbody>
+  const fees2 = Number(b.entryFeesUsd || 0);
+  return `<div class="big"><small>Live pot</small><b>${money(b.potUsd ?? b.rewardAmount)}</b>${fees2 ? `<em>${money(b.rewardAmount)} reward + ${money(fees2)} from ${b.entryFeePayers} entry fees</em>` : ''}</div>
+<h2>Rewards <small>${rows.length} paid places</small></h2>${rows.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>Place</th>${fees ? '<th>Base</th><th>Fee share</th>' : ''}<th class="num">Pays now</th></tr></thead><tbody>
 ${rows.map((r) => `<tr><td>${ordinal(r.place)}</td>${fees ? `<td>${money(r.baseUsd)}</td><td>+${money(r.feeShareUsd)}</td>` : ''}<td class="num"><b>${money(r.amountUsd)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No prize table published.</p>'}
-<p class="muted">Total live pot <b>${money(b.potUsd ?? b.rewardAmount)}</b>${b.entryFeeUsd ? ', growing with every entry fee paid' : ''}.</p>`;
+${b.entryFeeUsd ? '<p class="muted">The pot grows with every entry fee paid.</p>' : ''}`;
 }
 
 const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
