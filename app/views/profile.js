@@ -1,6 +1,7 @@
-// #/u/<handle>: avatar, bio, links, record, entries with placings, payouts. #/builders: rankings.
+// #/u/<handle>: avatar, handle, bio, links; totals (wins, winnings, entries); the account's entries
+// grouped by bounty with best score, place and payout; payouts with their transactions. #/builders: rankings.
 import { getProfile, getTopBuilders } from '../api.js';
-import { esc, money, fmtDate, avatar, crumbs, fmtScore } from '../app.js';
+import { esc, money, fmtDate, shortDate, avatar, crumbs, fmtScore, ordinal } from '../app.js';
 
 let shown = null;
 
@@ -12,16 +13,34 @@ export async function renderProfile(el, handle, live) {
   const links = [p.github_login && [`github.com/${p.github_login}`, `https://github.com/${encodeURIComponent(p.github_login)}`],
     p.x && [`@${p.x.username} on X`, p.x.url], p.discord && [p.discord.username + ' on Discord', p.discord.url],
     p.wallet && [`${p.wallet.address.slice(0, 4)}…${p.wallet.address.slice(-4)}`, p.wallet.explorer_url]].filter(Boolean);
-  el.innerHTML = `${crumbs(['@' + p.handle])}
+  const rows = entriesByBounty(sols, pays);
+  el.innerHTML = `${crumbs(['Top builders', '#/builders'], ['@' + p.handle])}
 <section class="profile panel">${avatar(p.avatar?.url || p.image, p.handle, 'av xl')}
-<div><h1>${esc(p.display_name || p.handle)}</h1><p class="muted">@${esc(p.handle)} · joined ${fmtDate(p.joined_at).split(',').slice(0, 2).join(',')}${p.house ? ' · house account' : ''}</p>
-${p.bio ? `<p>${esc(p.bio)}</p>` : ''}<p class="links">${links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)} ↗</a>`).join('')}</p></div></section>
-<section class="tiles">${[['Won', money(r.prize_usd)], ['Entered', r.competitions_entered], ['Placed', r.competitions_placed], ['Wins', r.competitions_won], ['Podiums', r.podium_finishes], ['Best place', r.best_placement ?? '—']]
-  .map(([k, v]) => `<div class="tile"><b>${esc(v ?? 0)}</b><small>${k}</small></div>`).join('')}</section>
-<div class="cols"><section class="panel"><h2>Entries <small>${sols.length}</small></h2>${sols.length ? `<div class="scroll"><table class="tbl"><thead><tr><th>Bounty</th><th>Entry</th><th class="num">Score</th><th class="num">Place</th><th class="num">Prize</th></tr></thead><tbody>
-${sols.map((s) => `<tr><td><a href="#/bounty/${encodeURIComponent(s.competition.slug)}">${esc(s.competition.title)}</a><br><small class="muted">${esc(s.competition.category || '')} · ${s.competition.status === 'resolved' ? 'resolved' : 'open'}</small></td>
-<td class="ttl">${esc(s.title || '—')}</td><td class="num">${esc(fmtScore(s.score?.column?.key, s.score?.value, s.score?.display))}</td><td class="num">${s.placement ? `<b>#${s.placement}</b>` : '—'}</td><td class="num">${s.prize_usd ? `<b class="win">${money(s.prize_usd)}</b>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No public entries yet.</p>'}</section>
-<section class="panel"><h2>Winnings <small>${pays.length} payouts</small></h2>${pays.length ? `<ul class="pays">${pays.map((x) => `<li><b class="win">${money(x.amount_usd)}</b> <span>${x.place ? `#${x.place} in ` : ''}<a href="#/bounty/${encodeURIComponent(x.competition.slug)}">${esc(x.competition.title)}</a><br><small class="muted">${fmtDate(x.paid_at)} · <a href="${esc(x.explorer_url)}" target="_blank" rel="noopener">tx ↗</a></small></span></li>`).join('')}</ul>` : '<p class="muted">No payouts yet.</p>'}</section></div>`;
+<div class="pwho"><h1>${esc(p.display_name || '@' + p.handle)}</h1><p class="muted">@${esc(p.handle)} · joined ${fmtDate(p.joined_at).split(',').slice(0, 2).join(',')}${p.house ? ' · house account' : ''}</p>
+<p class="bio${p.bio ? '' : ' muted'}">${esc(p.bio || 'No bio yet.')}</p><p class="links">${links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)} ↗</a>`).join('')}</p></div>
+<dl class="ptotals">${[['Wins', r.competitions_won ?? 0, 'win'], ['Winnings', money(r.prize_usd || 0), 'win'], ['Entries', sols.length.toLocaleString('en-US')], ['Bounties', r.competitions_entered ?? 0], ['Podiums', r.podium_finishes ?? 0], ['Best place', r.best_placement ? ordinal(r.best_placement) : '—']]
+  .map(([k, v, c]) => `<div><dt>${k}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd></div>`).join('')}</dl></section>
+<div class="cols"><section class="panel"><h2>Entries <small>${sols.length} entries in ${rows.length} bounties</small></h2>${rows.length ? `<div class="scroll"><table class="tbl pe"><thead><tr><th>Bounty</th><th class="num">Entries</th><th class="num">Top score</th><th class="num">Place</th><th class="num">Payout</th></tr></thead><tbody>
+${rows.map((x) => `<tr><td><a href="#/bounty/${encodeURIComponent(x.c.slug)}">${esc(x.c.title)}</a><br><small class="muted">${esc(x.c.category || '')}${x.c.category ? ' · ' : ''}${x.c.status === 'resolved' ? 'resolved' : Date.parse(x.c.deadline) > Date.now() ? 'taking entries' : 'awaiting results'} · last entry ${shortDate(x.last)}</small></td>
+<td class="num">${x.n}</td><td class="num">${esc(x.score)}</td><td class="num">${x.place ? `<b class="${x.place === 1 ? 'gold' : ''}">${ordinal(x.place)}</b>` : '—'}</td><td class="num">${x.payout ? `<b class="win">${money(x.payout)}</b>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No public entries yet.</p>'}</section>
+<section class="panel"><h2>Payouts <small>${pays.length} paid on chain</small></h2>${pays.length ? `<ul class="pays">${pays.map((x) => `<li><b class="win">${money(x.amount_usd)}</b> <span>${x.place ? `${ordinal(x.place)} in ` : ''}<a href="#/bounty/${encodeURIComponent(x.competition.slug)}">${esc(x.competition.title)}</a><br><small class="muted">${fmtDate(x.paid_at)} · <a href="${esc(x.explorer_url)}" target="_blank" rel="noopener">tx ↗</a></small></span></li>`).join('')}</ul>` : '<p class="muted">No payouts yet.</p>'}</section></div>`;
+}
+
+// One row a bounty: how many entries, the best score shown, the best place and what it paid.
+export function entriesByBounty(sols, pays) {
+  const by = new Map();
+  for (const s of sols) {
+    const x = by.get(s.competition.slug) || by.set(s.competition.slug, { c: s.competition, n: 0, place: null, prize: 0, best: null, score: '—', last: null }).get(s.competition.slug);
+    x.n++;
+    if (s.placement && (!x.place || s.placement < x.place)) x.place = s.placement;
+    x.prize = Math.max(x.prize, Number(s.prize_usd || 0));
+    if (s.score?.value != null && (x.best == null || s.score.value > x.best)) x.best = s.score.value, (x.score = fmtScore(s.score.column?.key, s.score.value, s.score.display));
+    if (!x.last || s.entered_at > x.last) x.last = s.entered_at;
+  }
+  const paid = new Map();
+  for (const y of pays) paid.set(y.competition.slug, (paid.get(y.competition.slug) || 0) + Number(y.amount_usd));
+  for (const x of by.values()) x.payout = paid.get(x.c.slug) || x.prize;
+  return [...by.values()].sort((a, b) => (b.payout - a.payout) || ((a.place || 1e9) - (b.place || 1e9)) || (b.last > a.last ? 1 : -1));
 }
 
 export async function renderBuilders(el, live) {
