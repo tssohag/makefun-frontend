@@ -5,11 +5,6 @@
 // unchanged ETag hands back the cached object unparsed, and views skip their re-render
 // when they get the same object. A failed revalidation falls back to the stale answer.
 
-export const API = 'https://make.fun/api';
-const TTL = 30e3;
-const cache = new Map(); // path -> { data, etag, at }
-const inflight = new Map(); // path -> Promise
-
 export function cachedFetch(path, fresh = false) {
   const hit = cache.get(path);
   if (hit && !fresh && Date.now() - hit.at < TTL) return Promise.resolve(hit.data);
@@ -33,6 +28,10 @@ export async function revalidate(path, hit) {
   return data;
 }
 
+export const API = 'https://make.fun/api';
+const TTL = 30e3;
+const cache = new Map(); // path -> { data, etag, at }
+const inflight = new Map(); // path -> Promise
 const enc = encodeURIComponent;
 export const getBounties = (f) => cachedFetch('/competitions?status=open&activity=times', f);
 export const getBounty = (slug, f) => cachedFetch(`/competitions/${enc(slug)}?submissions=summary`, f);

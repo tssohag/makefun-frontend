@@ -3,9 +3,6 @@
 import { getLeaderboard } from '../api.js';
 import { esc, crumbs, notice, fmtScore } from '../app.js';
 
-const PER = 50;
-const st = { data: null, rows: [], page: 0, q: '' };
-
 export async function renderLeaderboard(el, slug, live) {
   const lb = await getLeaderboard(slug, live);
   if (live && lb === st.data) return;
@@ -22,13 +19,16 @@ ${st.rows.length ? `<div class="panel"><div class="lb-tools"><input id="who" typ
 <div class="scroll"><table class="tbl lb"><thead><tr><th class="num">Rank</th><th>Entrant</th><th>Entry</th><th class="num">${esc(col?.title || 'Score')}</th><th>Interval</th><th>Valid</th><th>Received</th></tr></thead><tbody></tbody></table></div>
 <nav class="pager" aria-label="Pages"><button type="button" data-go="-1">‹ Prev</button><span class="pg"></span><button type="button" data-go="1">Next ›</button></nav></div>`
     : notice(lb.phase?.placements_held ? 'Placements are held' : 'No entries yet', lb.phase?.placements_held ? 'This board lists its entries once the results are published.' : 'Be the first: enter from the bounty page.')}`;
-    el.addEventListener('input', (e) => { if (e.target.id === 'who') st.q = e.target.value.trim().toLowerCase(), (st.page = 0), drawPage(el); });
-    el.addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) st.page += +b.dataset.go, drawPage(el), el.querySelector('.panel').scrollIntoView({ block: 'start' }); });
+    el.addEventListener('input', (e) => { if (e.target.id === 'who') st.q = e.target.value.trim().toLowerCase(), (st.page = 0), renderPage(el); });
+    el.addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) st.page += +b.dataset.go, renderPage(el), el.querySelector('.panel').scrollIntoView({ block: 'start' }); });
   }
   const ranked = st.rows.filter((r) => r.rank != null).length;
   el.querySelector('.lb-meta').textContent = `${st.rows.length.toLocaleString('en-US')} entries · ${ranked.toLocaleString('en-US')} ranked · ${lb.phase?.title || ''} phase · ranked by ${col?.title || lb.rank_key}${lb.phase?.placements_held ? ' · places unofficial until results publish' : ''}`;
-  if (st.rows.length) drawPage(el);
+  if (st.rows.length) renderPage(el);
 }
+
+// Only the visible page of PER rows is ever rendered.
+export const paginate = (rows, page) => rows.slice(page * PER, page * PER + PER);
 
 // The full rows (top ten) and the light `rest` rows, in one shape.
 export function normalizeRows(lb) {
@@ -40,9 +40,8 @@ export function normalizeRows(lb) {
 }
 
 const shortDate = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
-export const paginate = (rows, page) => rows.slice(page * PER, page * PER + PER);
 
-function drawPage(el) {
+function renderPage(el) {
   const rows = st.q ? st.rows.filter((r) => r.handle?.toLowerCase().includes(st.q)) : st.rows;
   const pages = Math.max(1, Math.ceil(rows.length / PER));
   st.page = Math.min(Math.max(st.page, 0), pages - 1);
@@ -57,3 +56,6 @@ function drawPage(el) {
   prev.disabled = st.page === 0;
   next.disabled = st.page >= pages - 1;
 }
+
+const PER = 50;
+const st = { data: null, rows: [], page: 0, q: '' }; // the board shown, its page and handle search

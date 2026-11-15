@@ -7,29 +7,23 @@
 // patches the current view in place, and countdowns tick by rewriting their text nodes only.
 import { getBounties, getTopBuilders } from './api.js';
 
-export const VIEWS = {
-  bounty: () => import('./views/bounty.js'),
-  leaderboard: () => import('./views/leaderboard.js'),
-  profile: () => import('./views/profile.js'),
-};
-const LIVE_MS = 60e3;
-const $app = document.getElementById('app');
-const $q = document.getElementById('q');
-let seq = 0;
-let view = null; // { el, hash } on screen
+// Less-used views load on first visit, so they stay out of the first load.
+const bountyView = () => import('./views/bounty.js');
+const leaderboardView = () => import('./views/leaderboard.js');
+const profileView = () => import('./views/profile.js');
 
 export async function route(live = false) {
   const [a, b, c] = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
   const run = !a ? renderBoard
-    : a === 'bounty' && b && !c ? async (el, l) => (await VIEWS.bounty()).renderBounty(el, b, l)
-    : a === 'bounty' && b && c === 'leaderboard' ? async (el, l) => (await VIEWS.leaderboard()).renderLeaderboard(el, b, l)
-    : a === 'u' && b ? async (el, l) => (await VIEWS.profile()).renderProfile(el, b, l)
-    : a === 'builders' ? async (el, l) => (await VIEWS.profile()).renderBuilders(el, l)
+    : a === 'bounty' && b && !c ? async (el, l) => (await bountyView()).renderBounty(el, b, l)
+    : a === 'bounty' && b && c === 'leaderboard' ? async (el, l) => (await leaderboardView()).renderLeaderboard(el, b, l)
+    : a === 'u' && b ? async (el, l) => (await profileView()).renderProfile(el, b, l)
+    : a === 'builders' ? async (el, l) => (await profileView()).renderBuilders(el, l)
     : async (el) => { el.innerHTML = notice('Page not found', 'That address is not a page of this app.'); };
   const my = ++seq;
   if (live) return view?.hash === location.hash && run(view.el, true).then(stamp, () => {});
   window.__shotReady = false;
-  $app.innerHTML = skeleton(a);
+  $app.innerHTML = renderSkeleton(a);
   scrollTo(0, 0);
   const el = document.createElement('div');
   el.className = 'view';
@@ -43,13 +37,6 @@ export async function route(live = false) {
   await imagesReady(el);
   if (my === seq) window.__shotReady = true;
 }
-
-// ---- the board ----
-const board = { cat: 'All', sort: 'soon', data: null };
-const SORTS = { soon: ['Ending soon', (x, y) => Date.parse(x.deadline) - Date.parse(y.deadline)],
-  pot: ['Biggest pot', (x, y) => pot(y) - pot(x)], few: ['Fewest entries', (x, y) => x.submissionCount - y.submissionCount] };
-const pot = (b) => Number(b.potUsd ?? b.rewardAmount ?? 0);
-const liveBounties = () => (board.data?.items || []).filter((b) => !b.demo && Date.parse(b.deadline) > Date.now());
 
 export async function renderBoard(el, live) {
   const [res, top] = await Promise.all([getBounties(live), getTopBuilders(live).catch(() => null)]);
@@ -65,18 +52,18 @@ export async function renderBoard(el, live) {
 <label class="sort">Sort <select id="sort">${Object.entries(SORTS).map(([k, [t]]) => `<option value="${k}">${t}</option>`).join('')}</select></label></div>
 <div class="layout"><div class="grid"></div><aside class="side"></aside></div>`;
     el.querySelector('#sort').value = board.sort;
-    el.addEventListener('change', (e) => { if (e.target.id === 'sort') board.sort = e.target.value, drawCards(el); });
-    el.addEventListener('click', (e) => { const c = e.target.closest('[data-cat]'); if (c) board.cat = c.dataset.cat, drawCards(el); });
+    el.addEventListener('change', (e) => { if (e.target.id === 'sort') board.sort = e.target.value, updateCards(el); });
+    el.addEventListener('click', (e) => { const c = e.target.closest('[data-cat]'); if (c) board.cat = c.dataset.cat, updateCards(el); });
   }
   const next = list.reduce((m, b) => (!m || Date.parse(b.deadline) < Date.parse(m.deadline) ? b : m), null);
   el.querySelector('.kpis').innerHTML = [['Taking entries', list.length], ['In live pots', money(total)], ['Entries so far', entries.toLocaleString('en-US')]]
     .map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('') + (next ? `<div><dt>Next to close</dt><dd>${countdown(next.deadline)}</dd></div>` : '');
   el.querySelector('.chips').innerHTML = cats.map((c) => `<button type="button" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
   if (top) el.querySelector('.side').innerHTML = topBuilders(top.items.slice(0, 6));
-  drawCards(el);
+  updateCards(el);
 }
 
-function drawCards(el) {
+function updateCards(el) {
   const q = $q.value.trim().toLowerCase();
   const list = liveBounties().filter((b) => (board.cat === 'All' || b.category === board.cat)
     && (!q || q[0] === '@' || `${b.title} ${b.category} ${b.summary}`.toLowerCase().includes(q))).sort(SORTS[board.sort][1]);
@@ -108,6 +95,10 @@ export function tickCountdowns() {
     n.classList.toggle('soon', ms > 0 && ms < 864e5);
   }
 }
+// Every 60 s the shown view re-reads its data (revalidated) and patches itself in place.
+function liveRefresh() {
+  if (document.visibilityState === 'visible') route(true);
+}
 export const countdown = (iso) => `<span class="cd" data-deadline="${esc(iso)}">${timeLeft(Date.parse(iso) - Date.now())}</span>`;
 export function timeLeft(ms) {
   if (!(ms > 0)) return 'Closed';
@@ -134,7 +125,19 @@ export const avatar = (url, handle, cls = 'av') => (url
   : `<span class="${cls}" aria-hidden="true">${esc((handle || '?')[0].toUpperCase())}</span>`);
 export const crumbs = (...links) => `<nav class="crumbs" aria-label="Breadcrumb"><a href="#/">Bounties</a>${links.map(([t, h]) => ` <span>›</span> ${h ? `<a href="${h}">${esc(t)}</a>` : `<b>${esc(t)}</b>`}`).join('')}</nav>`;
 export const notice = (title, text, retry) => `<div class="empty"><h2>${esc(title)}</h2><p>${esc(text)}</p>${retry ? '<button class="btn" type="button" data-retry>Try again</button>' : '<a class="btn" href="#/">Back to bounties</a>'}</div>`;
-const skeleton = (a) => `<div class="sk-wrap" aria-busy="true"><div class="sk sk-h"></div>${a ? '<div class="sk sk-panel"></div>' : ''}<div class="sk-grid">${'<div class="sk sk-card"></div>'.repeat(a ? 2 : 6)}</div></div>`;
+const renderSkeleton = (a) => `<div class="sk-wrap" aria-busy="true"><div class="sk sk-h"></div>${a ? '<div class="sk sk-panel"></div>' : ''}<div class="sk-grid">${'<div class="sk sk-card"></div>'.repeat(a ? 2 : 6)}</div></div>`;
+
+// ---- state and start ----
+const LIVE_MS = 60e3;
+const $app = document.getElementById('app');
+const $q = document.getElementById('q');
+let seq = 0;
+let view = null; // { el, hash } on screen
+const board = { cat: 'All', sort: 'soon', data: null };
+const SORTS = { soon: ['Ending soon', (x, y) => Date.parse(x.deadline) - Date.parse(y.deadline)],
+  pot: ['Biggest pot', (x, y) => pot(y) - pot(x)], few: ['Fewest entries', (x, y) => x.submissionCount - y.submissionCount] };
+const pot = (b) => Number(b.potUsd ?? b.rewardAmount ?? 0);
+const liveBounties = () => (board.data?.items || []).filter((b) => !b.demo && Date.parse(b.deadline) > Date.now());
 
 document.getElementById('search').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -142,9 +145,9 @@ document.getElementById('search').addEventListener('submit', (e) => {
   if (v[0] === '@' && v.length > 1) location.hash = `#/u/${encodeURIComponent(v.slice(1))}`;
   else if (location.hash.length > 2) location.hash = '#/';
 });
-$q.addEventListener('input', () => { if (location.hash.length <= 2 && view?.el.querySelector('.grid')) drawCards(view.el); });
+$q.addEventListener('input', () => { if (location.hash.length <= 2 && view?.el.querySelector('.grid')) updateCards(view.el); });
 document.addEventListener('click', (e) => { if (e.target.closest('[data-retry]')) route(); });
 addEventListener('hashchange', () => route());
 setInterval(tickCountdowns, 1e3);
-setInterval(() => document.visibilityState === 'visible' && route(true), LIVE_MS);
+setInterval(liveRefresh, LIVE_MS);
 route();
