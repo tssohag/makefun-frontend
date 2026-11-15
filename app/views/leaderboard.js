@@ -1,12 +1,8 @@
-// #/bounty/<slug>/leaderboard: one request (?rows=first) holds every row, beside the bounty
-// (cached if the board showed it) for the header: live pot, time left, paid places. Only the
-// visible page of PER rows is in the DOM; paging and the handle search re-draw the tbody alone.
-import { getLeaderboard, getBounty } from '../api.js';
-import { esc, notice, money, num, pot, ordinal, countdown, timeBar, oddsFor, perEntry } from '../app.js';
-import { paidPlaces } from '../bounty.js';
-import { crumbs, fmtScore, shortDate } from './shared.js';
+// #/bounty/<slug>/leaderboard: one request for every row, 50 a page in the DOM; paging re-draws the tbody only.
+import { cachedFetch, getBounty, paidPlaces, esc, notice, money, num, pot, countdown, timeBar, oddsFor, perEntry } from '../app.js';
+import { crumbs, fmtScore, shortDate, ordinal } from './bounty.js';
 
-export async function renderLeaderboard(el, slug, live) {
+async function renderLeaderboard(el, slug, live) {
   const [lb, b] = await Promise.all([getLeaderboard(slug, live), getBounty(slug, live).catch(() => null)]);
   if (live && lb === st.data && b === st.bounty) return;
   if (st.data?.competition?.slug !== slug) Object.assign(st, { page: 0, q: '' });
@@ -34,8 +30,9 @@ ${st.rows.length ? `<div class="panel"><div class="lb-tools"><input id="who" typ
   if (st.rows.length) renderPage(el);
 }
 
-// Live pot, time left, fee, entries, and the paid places with equal prizes run together (4th–10th $22.88).
-export function leaderboardHeader(b) {
+const getLeaderboard = (slug, f) => cachedFetch(`/competitions/${encodeURIComponent(slug)}/leaderboard?rows=first`, f);
+
+function leaderboardHeader(b) {
   const runs = [], o = oddsFor(b);
   for (const r of st.prizes) {
     const last = runs.at(-1);
@@ -48,18 +45,15 @@ export function leaderboardHeader(b) {
 <div class="places"><small>${st.prizes.length} paid places · ${o.per == null ? 'no entries yet' : `${perEntry(o.per)} per entry · ${o.label}`}</small><ol>${runs.map((r) => `<li><b>${ordinal(r.place)}${r.to > r.place ? `–${ordinal(r.to)}` : ''}</b> ${money(r.amountUsd)}</li>`).join('')}</ol></div>`;
 }
 
-// Only the visible page of PER rows is ever rendered.
-export const paginate = (rows, page) => rows.slice(page * PER, page * PER + PER);
+const paginate = (rows, page) => rows.slice(page * PER, page * PER + PER);
 
-// The full rows (top ten) and the light `rest` rows, in one shape.
-export function normalizeRows(lb) {
+function normalizeRows(lb) {
   const k = lb.rank_key;
   const row = (r, v, d, valid) => ({ rank: r.rank, prize: r.prize_eligible === false ? null : r.prize_rank, handle: r.handle, title: r.title, house: r.house || r.baseline, at: r.received_at,
     score: fmtScore(k, v, d), iv: r.interval ? `${fmtScore(k, +r.interval.low)} – ${fmtScore(k, +r.interval.high)}` : '', valid });
   return [...(lb.entries || []).map((e) => row(e, e.values?.[k], e.display?.[k], e.values?.valid ?? +(e.rank != null))),
     ...(lb.rest || []).map((r) => row(r, r.value, r.display, +(r.rank != null)))];
 }
-
 
 function renderPage(el) {
   const rows = st.q ? st.rows.filter((r) => r.handle?.toLowerCase().includes(st.q)) : st.rows;
@@ -78,4 +72,6 @@ function renderPage(el) {
 const prizeFor = (r) => { const p = r.prize && st.prizes[r.prize - 1]; return p ? `<b class="win">${money(p.amountUsd)}</b>` : '<span class="muted">—</span>'; };
 
 const PER = 50;
-const st = { data: null, bounty: null, prizes: [], rows: [], page: 0, q: '' }; // the board shown, its page and handle search
+const st = { data: null, bounty: null, prizes: [], rows: [], page: 0, q: '' };
+
+export { getLeaderboard, renderLeaderboard, leaderboardHeader, paginate, normalizeRows };

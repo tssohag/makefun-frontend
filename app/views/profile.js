@@ -1,12 +1,8 @@
-// #/u/<handle>: avatar, handle, bio, links; totals (wins, winnings, entries); the account's entries
-// grouped by bounty with best score, place and payout; payouts with their transactions. #/builders: rankings.
-import { getProfile, getTopBuilders } from '../api.js';
-import { esc, money, fmtDate, ordinal } from '../app.js';
-import { avatar, crumbs, fmtScore, shortDate } from './shared.js';
+// #/u/<handle>: totals, entries grouped by bounty, on-chain payouts; #/builders: the rankings.
+import { cachedFetch, esc, money } from '../app.js';
+import { avatar, crumbs, fmtScore, shortDate, ordinal, fmtDate, imagesDecoded } from './bounty.js';
 
-let shown = null;
-
-export async function renderProfile(el, handle, live) {
+async function renderProfile(el, handle, live) {
   const p = await getProfile(handle.replace(/^@/, ''), live);
   if (live && p === shown) return;
   shown = p;
@@ -25,10 +21,15 @@ export async function renderProfile(el, handle, live) {
 ${rows.map((x) => `<tr><td><a href="#/bounty/${encodeURIComponent(x.c.slug)}">${esc(x.c.title)}</a><br><small class="muted">${esc(x.c.category || '')}${x.c.category ? ' · ' : ''}${x.c.status === 'resolved' ? 'resolved' : Date.parse(x.c.deadline) > Date.now() ? 'taking entries' : 'awaiting results'} · last entry ${shortDate(x.last)}</small></td>
 <td class="num">${x.n}</td><td class="num">${esc(x.score)}</td><td class="num">${x.place ? `<b class="${x.place === 1 ? 'gold' : ''}">${ordinal(x.place)}</b>` : '—'}</td><td class="num">${x.payout ? `<b class="win">${money(x.payout)}</b>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No public entries yet.</p>'}</section>
 <section class="panel"><h2>Payouts <small>${pays.length} paid on chain</small></h2>${pays.length ? `<ul class="pays">${pays.map((x) => `<li><b class="win">${money(x.amount_usd)}</b> <span>${x.place ? `${ordinal(x.place)} in ` : ''}<a href="#/bounty/${encodeURIComponent(x.competition.slug)}">${esc(x.competition.title)}</a><br><small class="muted">${fmtDate(x.paid_at)} · <a href="${esc(x.explorer_url)}" target="_blank" rel="noopener">tx ↗</a></small></span></li>`).join('')}</ul>` : '<p class="muted">No payouts yet.</p>'}</section></div>`;
+  await imagesDecoded(el);
 }
 
-// One row a bounty: how many entries, the best score shown, the best place and what it paid.
-export function entriesByBounty(sols, pays) {
+const getProfile = (handle, f) => cachedFetch(`/profiles/${encodeURIComponent(handle)}`, f);
+const getTopBuilders = (f) => cachedFetch('/rankings?limit=50', f);
+
+let shown = null;
+
+function entriesByBounty(sols, pays) {
   const by = new Map();
   for (const s of sols) {
     const x = by.get(s.competition.slug) || by.set(s.competition.slug, { c: s.competition, n: 0, place: null, prize: 0, best: null, score: '—', last: null }).get(s.competition.slug);
@@ -44,9 +45,12 @@ export function entriesByBounty(sols, pays) {
   return [...by.values()].sort((a, b) => (b.payout - a.payout) || ((a.place || 1e9) - (b.place || 1e9)) || (b.last > a.last ? 1 : -1));
 }
 
-export async function renderBuilders(el, live) {
+async function renderBuilders(el, live) {
   const res = await getTopBuilders(live);
   el.innerHTML = `${crumbs(['Top builders'])}<h1>Top builders</h1><p class="muted">Ranked by competitions won, then prize money paid. ${res.total ? res.total + ' accounts ranked.' : ''}</p>
 <div class="panel scroll"><table class="tbl"><thead><tr><th class="num">Rank</th><th>Builder</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Entered</th><th class="num">Won</th></tr></thead><tbody>
 ${res.items.map((u) => `<tr><td class="num rank">${u.rank}</td><td><a class="who" href="#/u/${encodeURIComponent(u.handle)}">${avatar(u.avatar?.url_small || u.image, u.handle)} @${esc(u.handle)}</a></td><td class="num">${u.record.competitions_won}</td><td class="num">${u.record.podium_finishes}</td><td class="num">${u.record.competitions_entered}</td><td class="num"><b class="win">${money(u.record.prize_usd)}</b></td></tr>`).join('')}</tbody></table></div>`;
+  await imagesDecoded(el);
 }
+
+export { getProfile, getTopBuilders, renderProfile, entriesByBounty, renderBuilders };
