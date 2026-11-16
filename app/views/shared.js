@@ -1,9 +1,10 @@
 export { cachedFetch, revalidate, meter };
-// Shared by every view: the API cache (cachedFetch: 60 s in memory, one request in flight a path; revalidate: ETag)
-// and the meter, which index.html's route resets; countdowns, live refresh, keyboard, theme, search; in-place row
-// patching; formatting. The open-bounties list feeds the board, the bounty pane and the leaderboard's header, and the
-// bounty pane's Top 5 is the leaderboard's own request, so going from a bounty to its leaderboard costs none.
-const { route } = self.mf, API = 'https://make.fun/api', cache = new Map(), inflight = new Map();
+// Shared by every view: show (index.html's global route names the view the hash asks for, show draws it), the API
+// cache (cachedFetch: 60 s in memory, one request in flight a path; revalidate: ETag) and the meter, which show resets;
+// countdowns, live refresh, keyboard, theme, search; in-place row patching; formatting. The open-bounties list feeds
+// the board, the bounty pane and the leaderboard's header, and the bounty pane's Top 5 is the leaderboard's own
+// request, so going from a bounty to its leaderboard costs none.
+const API = 'https://make.fun/api', cache = new Map(), inflight = new Map();
 
 /** API answers stay in memory for 60 s, and one request in flight serves every caller of the same path. */
 function cachedFetch(path, fresh) {
@@ -27,10 +28,10 @@ async function revalidate(path, hit) {
   return data;
 }
 
-/** What the view on screen cost, reset by each route (index.html sets mf.t0): first-paint requests, cache hits,
- * ETag-unchanged answers, bytes, rows patched, time to ready, then anything after ready as background. */
+/** What the view on screen cost, reset by each show (t0: when it started, 0 for the first load): first-paint requests,
+ * cache hits, ETag-unchanged answers, bytes, rows patched, time to ready, then anything after ready as background. */
 const meter = {
-  reset() { self.__shotReady = false; Object.assign(meter, { req: 0, mem: 0, etag: 0, wire: 0, json: 0, bg: 0, bkb: 0, patched: 0, t0: mf.t0 || 0, ms: 0 }).show(); },
+  reset(t0) { self.__shotReady = false; Object.assign(meter, { req: 0, mem: 0, etag: 0, wire: 0, json: 0, bg: 0, bkb: 0, patched: 0, t0: t0 || 0, ms: 0 }).show(); },
   add(k, n = 1) { if (meter.ms && !/m|g/.test(k)) k = k === 'req' ? 'bg' : 'bkb'; meter[k] += n; meter.show(); },
   show() { drawMeter(meter); },
 };
@@ -47,7 +48,7 @@ function tickCountdowns() {
 
 function liveRefresh() {
   if (document.visibilityState !== 'visible') return;
-  const p = route(true);
+  const p = show(true);
   if (p) p.then(() => (stamp(), tickCountdowns()), () => {});
 }
 
@@ -140,7 +141,7 @@ function normalizeRows(lb) {
     ...(lb.rest || []).map((r) => row(r, r.value, r.display, +(r.rank != null)))]);
 }
 
-const stamp = () => { document.querySelector('.live').textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`; };
+const stamp = () => { document.querySelector('#live').textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`; };
 function timeLeft(ms) {
   if (!(ms > 0)) return 'Closed';
   const s = Math.floor(ms / 1e3), d = Math.floor(s / 86400), p = (n) => String(n).padStart(2, '0');
@@ -169,24 +170,44 @@ const userLink = (h) => `<a href="#/u/${encodeURIComponent(h)}">@${esc(h)}</a>`;
 const none = async (el) => { el.innerHTML = notice('Page not found', 'That address is not a page of this app.'); };
 const focusSearch = () => (scrollTo(0, 0), $q.focus());
 
-const $q = document.querySelector('.top input'), $theme = document.querySelector('.theme');
+const $q = document.querySelector('header input'), $theme = document.querySelector('#theme'), $main = document.querySelector('main');
 const darkScheme = matchMedia('(prefers-color-scheme: dark)');
 
-/** The meter bar: what the view on screen cost, counted by index.html's cachedFetch and revalidate, and the build's first-load facts. */
+/** The meter bar: what the view on screen cost, counted by cachedFetch and revalidate, and the build's first-load facts. */
 function drawMeter(m) {
   const kbs = (n) => `<b>${n < 10240 ? +(n / 1024).toFixed(1) : num(Math.round(n / 1024))} KB</b>`, size = kbs(m.wire + m.json), ms = m.ms ? ` · <b>${num(m.ms)} ms</b>` : '';
   setHTML($meter, phone.matches
     ? `<span><b>${m.req}</b> request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> cached · <b>${m.etag}</b> unchanged · ${size}${ms}${m.bg ? ` · <b>+${m.bg}</b> bg` : ''}</span>`
     : `<span>this view: <b>${m.req}</b> API request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> from cache · <b>${m.etag}</b> unchanged (ETag) · ${size} ${m.json ? 'JSON' : m.wire ? 'transferred' : 'downloaded'}${m.patched ? ` · <b>${num(m.patched)}</b> row${m.patched === 1 ? '' : 's'} patched` : ''}${m.ms ? ` · ready in <b>${num(m.ms)} ms</b>` : ''}${m.bg ? ` · <b>+${m.bg}</b> background (${kbs(m.bkb)})` : ''}</span><i>${BUILD}</i>`);
 }
-const BUILD = '1-file first load (1,985 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
+const BUILD = '1-file first load (1,493 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
 const phone = matchMedia('(max-width: 639px)');
-const $meter = document.body.appendChild(document.createElement('footer'));
+const $meter = document.createElement('footer'); // put on the page with the first view, once the stylesheet is in
 $meter.className = 'meter';
 
-// Wiring, once, when the first view loads.
-mf.meter = meter;
-mf.ready = () => {
+/** Draws the view index.html's route names, put on screen only once its module and the stylesheet are in (the skeleton
+ * holds its place until then); picking another bounty on the board repaints the detail pane only; live: refreshes the
+ * view on screen in place. */
+async function show(live) {
+  const { path, kind, ...args } = route();
+  if (live) return view?.path === path && view.run(view.el, args, 1);
+  const my = ++seq, el = document.createElement('div');
+  meter.reset(my > 1 && performance.now());
+  if (kind === 'board' && view?.kind === kind) return (view.path = path), view.mod.selectBounty(view.el, args.a && args.b, args.query).then(() => ready(my));
+  document.documentElement.dataset.k = kind, ($main.innerHTML = '<div class=sk>'), scrollTo(0, 0);
+  let mod, run;
+  try { [mod] = await Promise.all([VIEWS[kind](), styled]); await (run = mod[kind])(el, args); }
+  catch (e) { el.innerHTML = '<p class=empty><button data-retry>Retry</button>'; el.firstChild.prepend(`Could not load: ${e.message} `); }
+  if (my === seq) (view = { el, path, kind, mod, run }), $main.replaceChildren(el), $meter.isConnected || document.body.append($meter), ready(my);
+}
+const VIEWS = { board: () => import('./board.js'), leaderboard: () => import('./leaderboard.js'), profile: () => import('./profile.js'), builders: () => import('./profile.js'), none: async () => ({ none }) };
+const styled = import('./style.js');
+let view, seq = 0;
+self.mf = { route, show, get view() { return view; } };
+
+/** The view is on screen: the meter's time to ready, the nav, the title, the Live stamp, then the background work. */
+function ready(my) {
+  if (my !== seq) return;
   const n = ++readyN;
   meter.ms = Math.round(performance.now() - meter.t0), meter.show();
   for (const fn of later.splice(0)) fn();
@@ -198,7 +219,7 @@ mf.ready = () => {
   stamp();
   tickCountdowns();
   return true;
-};
+}
 let readyN = 0;
 $q.form.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -208,7 +229,7 @@ $q.form.addEventListener('submit', (e) => {
 });
 $q.addEventListener('input', () => mf.view?.mod.onSearch?.());
 document.addEventListener('click', (e) => {
-  if (e.target.closest('[data-retry]')) route();
+  if (e.target.closest('[data-retry]')) show();
   else if (e.target.closest('[data-search]')) focusSearch();
 });
 $theme.addEventListener('click', () => applyTheme($theme.getAttribute('aria-pressed') === 'true' ? 'light' : 'dark'));
@@ -221,7 +242,8 @@ applyTheme();
 bindKeyboard();
 setInterval(tickCountdowns, 1e3);
 setInterval(liveRefresh, 60e3);
-meter.reset();
+onhashchange = () => show();
+show();
 
 export { tickCountdowns, liveRefresh, bindKeyboard, applyTheme, patchRows, setHTML, oddsFor, paidPlaces, placeRuns, placeLabel, getBounties, getBounty, bountyFor, getLeaderboard, background, afterReady, normalizeRows,
-  route, esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, shortDate, fmtScore, imagesDecoded, avatar, crumbs, userLink, none };
+  show, esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, shortDate, fmtScore, imagesDecoded, avatar, crumbs, userLink, none };

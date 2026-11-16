@@ -4,7 +4,7 @@ export { renderBoard, renderBountyDetail, renderTop5, selectBounty };
 // so opening the leaderboard next costs none) and, once the dates or rules are in view, the bounty's own record (rules,
 // results date). Picking a row repaints the detail pane only; a live refresh patches what changed, in place.
 import { getBounties, getBounty, getLeaderboard, background, afterReady, normalizeRows, patchRows, setHTML, oddsFor, paidPlaces, placeRuns, placeLabel, tickCountdowns,
-  esc, num, money, pot, countdown, timeBar, perEntry, notice, fmtDate, userLink } from './shared.js';
+  esc, num, money, pot, countdown, timeBar, perEntry, notice, fmtDate, userLink, show } from './shared.js';
 
 async function renderBoard(el, { a, b, query }, live) {
   if (!live) readQuery(query);
@@ -106,7 +106,7 @@ function paintBoard(el) {
 function updateRows(el) {
   if (!SORTS[board.sort]) board.sort = 'soon';
   el.querySelector('select').value = board.sort;
-  const q = document.querySelector('.top input').value.trim().toLowerCase();
+  const q = document.querySelector('header input').value.trim().toLowerCase();
   const keep = (b) => (board.cat === 'All' || b.category === board.cat) && (!q || q[0] === '@' || `${b.title} ${b.category} ${b.summary}`.toLowerCase().includes(q));
   const { open, soon } = boardGroups();
   const rows = open.filter(keep).sort(SORTS[board.sort][1]), later = soon.filter(keep);
@@ -241,7 +241,7 @@ function step(d) {
   if (!r) return;
   if (!wide.matches) return void (board.sel = r.dataset.slug, markSelected(el), r.scrollIntoView({ block: 'nearest' }));
   history.replaceState(null, '', r.getAttribute('href'));
-  mf.route();
+  show();
 }
 
 function back() {

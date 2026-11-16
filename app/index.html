@@ -1,51 +1,36 @@
 <!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width">
+<html lang=en>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width">
 <title>make.fun bounties</title>
+<script>// route; shared.js: cachedFetch (60s), revalidate (ETag), meter
+try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'')}catch{}
+function route(){
+const[path,query='']=location.hash.replace(/^#\/?/,'').split('?'),[a,b,c]=path.split('/').map(decodeURIComponent);
+return{path,a,b,c,query,kind:!a||a=='bounty'&&b&&!c?'board':a=='bounty'&&c=='leaderboard'?'leaderboard':a=='u'&&b?'profile':a=='builders'&&!b?'builders':'none'}}
+document.documentElement.dataset.k=route().kind;
+import('./views/shared.js').catch(e=>document.querySelector('main').textContent=e.message);
+</script>
 <style>
 :root{--ac:#c2185b;--ink:#17151c;--mut:#5d5a68;--bg:#f6f5f8;--card:#fff;--line:#e6e2ec;--ok:#17703f}
-[data-theme=dark]{--ac:#f48fb1;--ink:#ecebf1;--mut:#a9a5b5;--bg:#121116;--card:#1c1b22;--line:#34313d;--ok:#5fd394;color-scheme:dark}
+[data-theme=dark]{--ac:#f48fb1;--ink:#ecebf1;--mut:#a9a5b5;--bg:#121116;--card:#1c1b22;--line:#34313d;--ok:#5fd394}
 *{box-sizing:border-box}
 body{margin:0;font:15px/1.5 system-ui;color:var(--ink);background:var(--bg)}
 a{color:var(--ac);text-decoration:none}
-.top{position:sticky;top:0;display:flex;align-items:center;gap:22px;padding:10px max(20px,50% - 620px);background:var(--card);border-bottom:1px solid var(--line)}
-.logo{font-size:21px;color:var(--ink);font-weight:700;letter-spacing:-.02em}.logo b{color:var(--ac)}
-.logo small{margin-left:6px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
+header{display:flex;align-items:center;gap:22px;padding:10px max(20px,50% - 620px);background:var(--card);border-bottom:1px solid var(--line)}
+header>a{font-size:21px;color:var(--ink);font-weight:700;letter-spacing:-.02em}
+header b{color:var(--ac)}
+header small{margin-left:6px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
 nav{display:flex;gap:4px}
 nav>*{font:inherit;color:var(--ink);font-weight:600;padding:6px 12px;border-radius:99px;border:0;background:none}
 form{flex:1;max-width:360px;margin-left:auto}
 input{width:100%;font:inherit;color:var(--ink);padding:8px 14px;border:1px solid var(--line);border-radius:99px;background:var(--bg)}
-.live{width:92px;text-align:right;font-size:13px;font-weight:600;color:var(--ok);white-space:nowrap}
-.theme{width:36px;height:36px;opacity:0}
+#live{width:92px;text-align:right;font-size:13px;font-weight:600;color:var(--ok)}
+#theme{width:36px;height:36px;opacity:0}
 main{max-width:1240px;margin:0 auto;padding:18px 20px 24px}
-[data-k=board]{max-width:1480px}
+[data-k=board] main{max-width:1480px}
 .sk{border-radius:14px;background:var(--line);height:70vh}
-@media (min-width:1000px){[data-k=board] .sk{background:linear-gradient(90deg,var(--line) 640px,#0000 0 658px,var(--line) 0)}}
-@media (max-width:860px){.top{flex-wrap:wrap;gap:8px 14px;padding:10px 14px}form{order:9;flex-basis:100%;max-width:none}main{padding:14px 12px}}
-@media (max-width:639px){.live{margin-left:auto}input,.theme{min-height:44px}.theme{width:44px}nav{position:fixed;inset:auto 0 0;padding:4px 6px;background:var(--card);border-top:1px solid var(--line)}nav>*{display:grid!important;place-items:center;flex:1;min-height:52px}}
-</style>
-<header class="top"><a class="logo" href="#/"><b>make</b>.fun<small>bounties</small></a><nav><a href="#/">Bounties</a><a href="#/builders">Builders</a><button hidden data-search>Search</button></nav>
-<form><input type="search" placeholder="Search bounties or @handle" aria-label="Search"></form><span class="live">Live</span><button class="theme" aria-label="Dark theme"></button></header>
-<main></main>
-<script type="module">// route; shared.js: cachedFetch (60s), revalidate (ETag), meter
-try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'')}catch{}
-const main=document.querySelector('main'),
-VIEWS={board:()=>import('./views/board.js'),leaderboard:()=>import('./views/leaderboard.js'),profile:()=>import('./views/profile.js'),builders:()=>import('./views/profile.js'),none:()=>import('./views/shared.js')};
-let view,seq=0;
-async function route(live){
-const[path,query='']=location.hash.replace(/^#\/?/,'').split('?'),[a,b,c]=path.split('/').map(decodeURIComponent),args={a,b,c,query},
-kind=!a||a=='bounty'&&b&&!c?'board':a=='bounty'&&c=='leaderboard'?'leaderboard':a=='u'&&b?'profile':a=='builders'&&!b?'builders':'none';
-if(live)return view?.path==path&&view.run(view.el,args,1);
-const my=++seq,el=document.createElement('div');
-mf.t0=my>1&&performance.now();mf.meter?.reset();
-if(kind=='board'&&view?.kind==kind)return view.path=path,view.mod.selectBounty(view.el,a&&b,query).then(()=>ready(my));
-main.dataset.k=kind;main.innerHTML='<div class=sk>';scrollTo(0,0);
-let mod,run;
-try{[mod]=await Promise.all([VIEWS[kind](),import('./views/style.js')]);await(run=mod[kind])(el,args)}
-catch(e){el.innerHTML='<p class=empty><button data-retry>Retry</button>';el.firstChild.prepend(`Could not load: ${e.message} `)}
-if(my==seq)view={el,path,kind,mod,run},main.replaceChildren(el),ready(my)}
-const ready=(my)=>my==seq&&mf.ready?.();
-self.mf={route,get view(){return view}};
-onhashchange=()=>route();route();
-</script>
+@media(min-width:1000px){[data-k=board] .sk{background:linear-gradient(90deg,var(--line) 640px,#0000 0 658px,var(--line) 0)}}
+@media(max-width:860px){header{flex-wrap:wrap;gap:8px 14px;padding:10px 14px}form{order:9;flex-basis:100%;max-width:none}main{padding:14px 12px}}
+@media(max-width:639px){#live{margin-left:auto}input,#theme{min-height:44px}#theme{width:44px}nav{position:fixed;inset:auto 0 0;padding:4px 6px;background:var(--card);border-top:1px solid var(--line)}nav>*{display:grid!important;place-items:center;flex:1;min-height:52px}}
+</style><header><a href=#/><b>make</b>.fun<small>bounties</small></a><nav><a href=#/>Bounties</a><a href=#/builders>Builders</a><button hidden data-search>Search</button></nav><form><input type=search placeholder="Search bounties or @handle" aria-label=Search></form><span id=live>Live</span><button id=theme aria-label="Dark theme"></button></header><main><div class=sk></div></main>
