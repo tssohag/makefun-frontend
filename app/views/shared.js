@@ -1,5 +1,6 @@
 // Shared by every view: countdowns, live refresh, keyboard, theme, search; in-place row patching; formatting; the API
-// calls two views share (so the bounty pane's Top 5 and the leaderboard are one cached request).
+// calls the views share: the open-bounties list feeds the board, the bounty pane and the leaderboard's header, and the
+// bounty pane's Top 5 is the leaderboard's own request, so going from a bounty to its leaderboard costs none.
 const { cachedFetch, route, meter } = self.mf;
 
 function tickCountdowns() {
@@ -71,8 +72,20 @@ function patchRows(box, rows) {
 /** Sets a node's markup only when it changed. */
 const setHTML = (n, html) => { if (n.$h !== html) n.innerHTML = n.$h = html; };
 
+/** Every open bounty, each with all the board and the bounty pane show (rewards, pot, fees, description, scoring). */
+const getBounties = (f) => cachedFetch('/competitions?status=open&activity=times', f);
+/** One bounty's full record: only its rules and phases (the results date) are not in the list, so it loads lazily. */
 const getBounty = (slug, f) => cachedFetch(`/competitions/${encodeURIComponent(slug)}?submissions=summary`, f);
+/** A bounty from the open list (shared and cached); a bounty that is not open any more costs its own request. */
+const bountyFor = async (slug, f) => (await getBounties(f).catch(() => null))?.items.find((b) => b.slug === slug) || getBounty(slug, f);
+/** The first rows in full plus every other row in brief (`rest`): the whole board, about a third of `rows=all`'s bytes. */
 const getLeaderboard = (slug, f) => cachedFetch(`/competitions/${encodeURIComponent(slug)}/leaderboard?rows=first`, f);
+/** Work started after a view is ready (requests the meter counts as background); the screenshot hook waits for it. */
+const pending = new Set();
+const background = (p) => (pending.add(p), p.finally(() => pending.delete(p)));
+/** Runs `fn` once the view on screen is ready (now, if it is), so lazy loads never delay or join the first paint. */
+const afterReady = (fn) => (meter.ms ? fn() : later.push(fn));
+const later = [];
 
 /** One flat list of a leaderboard's rows (scored entries, then the rest), each with its formatted score. */
 function normalizeRows(lb) {
@@ -118,24 +131,30 @@ const darkScheme = matchMedia('(prefers-color-scheme: dark)');
 
 /** The meter bar: what the view on screen cost, counted by index.html's cachedFetch and revalidate, and the build's first-load facts. */
 function drawMeter(m) {
-  const kb = (m.wire + m.json) / 1024, size = `<b>${kb < 10 ? +kb.toFixed(1) : num(Math.round(kb))} KB</b>`, ms = m.ms ? ` · <b>${num(m.ms)} ms</b>` : '';
+  const kbs = (n) => `<b>${n < 10240 ? +(n / 1024).toFixed(1) : num(Math.round(n / 1024))} KB</b>`, size = kbs(m.wire + m.json), ms = m.ms ? ` · <b>${num(m.ms)} ms</b>` : '';
   setHTML($meter, phone.matches
-    ? `<span><b>${m.req}</b> requests · <b>${m.mem}</b> cached · <b>${m.etag}</b> ETag-unchanged · ${size}${ms}</span>`
-    : `<span>this view: <b>${m.req}</b> API request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> from cache · <b>${m.etag}</b> unchanged (ETag) · ${size} ${m.json ? 'JSON' : m.wire ? 'transferred' : 'downloaded'}${m.patched ? ` · <b>${num(m.patched)}</b> row${m.patched === 1 ? '' : 's'} patched` : ''}${m.ms ? ` · ready in <b>${num(m.ms)} ms</b>` : ''}</span><i>${BUILD}</i>`);
+    ? `<span><b>${m.req}</b> requests · <b>${m.mem}</b> cached · <b>${m.etag}</b> unchanged · ${size}${ms}${m.bg ? ` · <b>+${m.bg}</b> bg` : ''}</span>`
+    : `<span>this view: <b>${m.req}</b> API request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> from cache · <b>${m.etag}</b> unchanged (ETag) · ${size} ${m.json ? 'JSON' : m.wire ? 'transferred' : 'downloaded'}${m.patched ? ` · <b>${num(m.patched)}</b> row${m.patched === 1 ? '' : 's'} patched` : ''}${m.ms ? ` · ready in <b>${num(m.ms)} ms</b>` : ''}${m.bg ? ` · <b>+${m.bg}</b> background (${kbs(m.bkb)})` : ''}</span><i>${BUILD}</i>`);
 }
-const BUILD = '1-file first load (2,487 B gzip) · 4 views by import() · ETag cache · rows patched in place · virtual leaderboard';
+const BUILD = '1-file first load (2,530 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
 const phone = matchMedia('(max-width: 639px)');
 const $meter = document.querySelector('.meter');
 
 // Wiring, once, when the first view loads.
 mf.draw = drawMeter;
 mf.ready = () => {
+  const n = ++readyN;
+  for (const fn of later.splice(0)) fn();
+  // The screenshot hook waits two frames (lazy loads start when their section is in view) and for the work they start.
+  requestAnimationFrame(() => requestAnimationFrame(() => Promise.allSettled(pending).then(() => { if (n === readyN && meter.ms) self.__shotReady = true; })));
   const v = mf.view?.el, k = mf.view?.kind;
   for (const n of document.querySelectorAll('nav a')) n.toggleAttribute('aria-current', n.hash === (k === 'board' ? '#/' : k === 'profile' || k === 'builders' ? '#/builders' : ''));
   document.title = ((v?.querySelector('.detail:not([hidden]) h1') || v?.querySelector('h1'))?.textContent || 'Bounties') + ' · make.fun';
   stamp();
   tickCountdowns();
+  return true;
 };
+let readyN = 0;
 $q.form.addEventListener('submit', (e) => {
   e.preventDefault();
   const v = $q.value.trim();
@@ -159,5 +178,5 @@ setInterval(tickCountdowns, 1e3);
 setInterval(liveRefresh, 60e3);
 drawMeter(meter);
 
-export { tickCountdowns, liveRefresh, bindKeyboard, applyTheme, patchRows, setHTML, oddsFor, paidPlaces, getBounty, getLeaderboard, normalizeRows,
+export { tickCountdowns, liveRefresh, bindKeyboard, applyTheme, patchRows, setHTML, oddsFor, paidPlaces, getBounties, getBounty, bountyFor, getLeaderboard, background, afterReady, normalizeRows,
   cachedFetch, route, meter, esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, shortDate, fmtScore, imagesDecoded, avatar, crumbs, userLink, none };

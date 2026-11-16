@@ -7,7 +7,7 @@ sheet.replaceSync(String.raw`
 a:hover{text-decoration:underline}
 body{padding-bottom:30px}
 .meter{position:fixed;z-index:7;inset:auto 0 0;display:flex;gap:16px;justify-content:space-between;padding:5px max(20px,50% - 720px);font-size:12px;color:var(--mut);background:var(--card);border-top:1px solid var(--line);white-space:nowrap}
-.meter span{overflow:hidden;text-overflow:ellipsis}.meter b{color:var(--ink);font-variant-numeric:tabular-nums}.meter i{font-style:normal}
+.meter span{overflow:hidden;text-overflow:ellipsis}.meter b{color:var(--ink);font-variant-numeric:tabular-nums}.meter i{font-style:normal;overflow:hidden;text-overflow:ellipsis;flex-shrink:9}
 h1{font-size:30px;line-height:1.15;margin:6px 0;letter-spacing:-.02em}
 h2{font-size:17px;margin:0 0 12px}
 h2 small,.muted{color:var(--mut);font-weight:400}

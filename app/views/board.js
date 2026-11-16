@@ -1,30 +1,35 @@
-// #/ and #/bounty/<slug>: the live board beside the selected bounty. Picking a row repaints the detail pane only;
-// a live refresh patches the rows and figures that changed, in place.
-import { cachedFetch, getBounty, getLeaderboard, normalizeRows, patchRows, setHTML, oddsFor, paidPlaces, tickCountdowns,
+// #/ and #/bounty/<slug>: the live board beside the selected bounty, both drawn from one request (the open-bounties
+// list); the pane's Top 5 is a second (the leaderboard's first rows). The bounty's rules and results date are only in
+// its own record, fetched in the background once the dates or the rules come into view. Picking a row repaints the
+// detail pane only; a live refresh patches the rows and figures that changed, in place.
+import { getBounties, getBounty, getLeaderboard, background, afterReady, normalizeRows, patchRows, setHTML, oddsFor, paidPlaces, tickCountdowns,
   esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, userLink } from './shared.js';
 
 async function renderBoard(el, { a, b, query }, live) {
   if (!live) readQuery(query);
-  const [res] = await Promise.all([getBounties(live), live && board.sel && renderBountyDetail(el.querySelector('.detail'), board.sel, null, true)]);
+  const res = await getBounties(live);
   if (!live || res !== board.data) board.data = res, paintBoard(el);
   if (!live) await selectBounty(el, a ? b : null);
+  else if (board.sel) await renderBountyDetail(el.querySelector('.detail'), board.sel, true);
 }
 
-async function renderBountyDetail(pane, slug, item, live) {
+/** Paints the pane from the board's own list; only a bounty that is not open any more costs a request of its own. */
+async function renderBountyDetail(pane, slug, live) {
+  let b = boardItem(slug);
   if (!live && pane.dataset.slug !== slug) {
     pane.dataset.slug = slug;
     shown = null;
     pane.scrollTop = 0;
-    if (item) paintDetail(pane, item);
-    else pane.innerHTML = '<div class="sk"></div>';
+    if (!b) pane.innerHTML = '<div class="sk"></div>';
   }
   const top = renderTop5(pane, slug, live);
-  let b;
-  try { b = await getBounty(slug, live); } catch (e) {
-    if (!item && pane.dataset.slug === slug) pane.innerHTML = notice('Could not load this bounty', e.message, true);
-    return;
+  if (!b) {
+    try { b = await getBounty(slug, live); } catch (e) {
+      if (!shown && pane.dataset.slug === slug) pane.innerHTML = notice('Could not load this bounty', e.message, true);
+      return;
+    }
+    if (pane.dataset.slug !== slug) return;
   }
-  if (pane.dataset.slug !== slug) return;
   if (b !== shown) (live && shown ? patchDetail : paintDetail)(pane, b), (shown = b);
   await top;
 }
@@ -40,7 +45,7 @@ async function selectBounty(el, slug, query) {
   if (!slug) return void (pane.hidden = true, (pane.dataset.slug = ''));
   pane.hidden = false;
   if (!wide.matches) scrollTo(0, 0);
-  await renderBountyDetail(pane, slug, boardItem(slug));
+  await renderBountyDetail(pane, slug);
 }
 
 /** The pane's "Top 5 now": the same cached request as the leaderboard view, so opening the leaderboard next costs none. */
@@ -71,8 +76,6 @@ function onSearch() {
   if (!wide.matches && location.hash.startsWith('#/bounty/')) location.hash = '#/';
   updateRows(mf.view.el);
 }
-
-const getBounties = (f) => cachedFetch('/competitions?status=open&activity=times', f);
 
 function paintBoard(el) {
   const { open, soon } = boardGroups();
@@ -130,20 +133,44 @@ function markSelected(el) {
 }
 
 function paintDetail(pane, b) {
-  const results = b.resolvedAt || b.phases?.at(-1)?.endsAt, opened = b.opensAt || b.publishedAt, top = pane.querySelector('.top5');
+  const top = pane.querySelector('.top5');
   pane.innerHTML = `<a class="back" href="#/">‹ All bounties</a>
 <div class="tags"><span class="pill">${esc(b.category || 'Bounty')}</span> ${statusChip(b)} <span class="muted">by ${esc(b.sponsor?.name || 'make.fun')}</span></div>
 <h1>${esc(b.title)}</h1><p class="lead">${esc(b.summary || '')}</p>
 <div class="stats"></div><p class="odds"></p><p class="actions"></p>
-<dl class="dates">${dateCell('Opened', opened)}${dateCell('Deadline', b.deadline)}${dateCell(b.resolvedAt ? 'Results published' : 'Results by', results)}</dl>
+<dl class="dates">${dates(b)}</dl>
 <div class="rw-grid"><section class="rewards-box"></section><section class="top5" aria-label="Top 5 now"><h2>Top 5 now</h2><div class="sk"></div></section></div>
 ${b.description ? `<article class="prose"><h2>Description</h2>${md(b.description)}
 ${b.resolution?.summary ? `<h2>How it is scored</h2><p>${esc(b.resolution.summary)}</p>` : ''}
-${b.rules ? `<details><summary>Full rules</summary>${md(b.rules)}</details>` : ''}</article>` : ''}`;
+${'rules' in b && !b.rules ? '' : `<details class="rules"><summary>Full rules</summary>${b.rules ? md(b.rules) : '<p class="muted">Loading the rules…</p>'}</details>`}</article>` : ''}`;
   if (top?.dataset.slug === b.slug) pane.querySelector('.top5').replaceWith(top);
   patchDetail(pane, b);
+  if (!('phases' in b)) afterReady(() => pane.dataset.slug === b.slug && lazyRecord(pane, b.slug));
   tickCountdowns();
 }
+
+/** The rules and the results date are only in the bounty's own record: it is fetched (in the background, after the
+ * view is ready) once the dates or the rules come into view, never while ↑↓ only passes over a bounty. */
+function lazyRecord(pane, slug) {
+  const io = new IntersectionObserver((es) => {
+    if (!es.some((e) => e.isIntersecting)) return;
+    io.disconnect();
+    background(new Promise((r) => setTimeout(r, 120)).then(() => pane.dataset.slug === slug && getBounty(slug).then((d) => fillRecord(pane, slug, d), () => fillRecord(pane, slug, null))));
+  });
+  for (const n of pane.querySelectorAll('.dates, .rules')) io.observe(n);
+}
+
+function fillRecord(pane, slug, d) {
+  if (pane.dataset.slug !== slug) return;
+  const rules = pane.querySelector('.rules');
+  if (d) setHTML(pane.querySelector('.dates'), dates(d));
+  if (!rules) return;
+  if (d && !d.rules) rules.remove();
+  else rules.innerHTML = `<summary>Full rules</summary>${d ? md(d.rules) : '<p class="muted">The rules are unavailable right now.</p>'}`;
+}
+
+const dates = (b) => dateCell('Opened', b.opensAt || b.publishedAt) + dateCell('Deadline', b.deadline)
+  + dateCell(b.resolvedAt ? 'Results published' : 'Results by', b.resolvedAt || b.phases?.at(-1)?.endsAt);
 
 function patchDetail(pane, b) {
   const n = num(b.submissionCount), fees = Number(b.entryFeesUsd || 0), o = oddsFor(b), lb = `#/bounty/${encodeURIComponent(b.slug)}/leaderboard`;

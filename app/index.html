@@ -59,8 +59,8 @@ async function revalidate(path,hit){
   const text=await res.text(),data=JSON.parse(text),t=performance.getEntriesByName(res.url).at(-1)?.transferSize;
   meter.add(t?'wire':'json',t||text.length);cache.set(path,{data,etag,at:Date.now()});return data;
 }
-const meter={reset(t0){Object.assign(meter,{req:0,mem:0,etag:0,wire:0,json:0,patched:0,t0,ms:0}).show()},add(k,n=1){meter[k]+=n;meter.show()},show(){self.mf?.draw?.(meter)}};
-function ready(my){if(my==seq)meter.ms=Math.round(performance.now()-meter.t0),meter.show(),mf.ready?.(),self.__shotReady=!0}
+const meter={reset(t0){Object.assign(meter,{req:0,mem:0,etag:0,wire:0,json:0,bg:0,bkb:0,patched:0,t0,ms:0}).show()},add(k,n=1){meter.ms&&!/m|g/.test(k)&&(k=k=='req'?'bg':'bkb');meter[k]+=n;meter.show()},show(){self.mf?.draw?.(meter)}};
+function ready(my){if(my==seq)meter.ms=Math.round(performance.now()-meter.t0),meter.show(),mf.ready?.()||(self.__shotReady=!0)}
 self.mf={route,cachedFetch,meter,get view(){return view}};
 onhashchange=()=>route();route();
 </script>

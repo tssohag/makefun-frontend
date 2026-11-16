@@ -1,10 +1,12 @@
-// #/bounty/<slug>/leaderboard: one cached request for every row (the same one the bounty pane's Top 5 made), drawn as a
-// virtual list: only the rows in view, plus a few, are in the DOM, reused as it scrolls and patched in place on refresh.
-import { getBounty, getLeaderboard, normalizeRows, patchRows, setHTML, paidPlaces, oddsFor, esc, notice, money, num, pot, countdown, timeBar,
+// #/bounty/<slug>/leaderboard: every row comes in `?rows=first` (the first rows in full, the rest in brief), the same
+// cached request the bounty pane's Top 5 made; the header comes from the open-bounties list the board made. So from a
+// bounty this view costs no request, and loaded directly it costs those two. Drawn as a virtual list: only the rows in
+// view, plus a few, are in the DOM, reused as it scrolls and patched in place on refresh.
+import { bountyFor, getLeaderboard, normalizeRows, patchRows, setHTML, paidPlaces, oddsFor, esc, notice, money, num, pot, countdown, timeBar,
   perEntry, ordinal, shortDate, crumbs, userLink } from './shared.js';
 
 async function renderLeaderboard(el, { b: slug }, live) {
-  const [lb, b] = await Promise.all([getLeaderboard(slug, live), getBounty(slug, live).catch(() => null)]);
+  const [lb, b] = await Promise.all([getLeaderboard(slug, live), bountyFor(slug, live).catch(() => null)]);
   if (live && lb === st.data && b === st.bounty) return;
   if (st.slug !== slug) Object.assign(st, { slug, q: '' });
   Object.assign(st, { data: lb, bounty: b, prizes: b ? paidPlaces(b) : [], rows: normalizeRows(lb) });
