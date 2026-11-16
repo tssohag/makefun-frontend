@@ -1,7 +1,8 @@
-// #/ and #/bounty/<slug>: the live board beside the selected bounty, both drawn from one request (the open-bounties
-// list); the pane's Top 5 is a second (the leaderboard's first rows). The bounty's rules and results date are only in
-// its own record, fetched in the background once the dates or the rules come into view. Picking a row repaints the
-// detail pane only; a live refresh patches the rows and figures that changed, in place.
+export { renderBoard, renderBountyDetail, renderTop5, selectBounty };
+// #/ and #/bounty/<slug>: the live board beside the selected bounty. First paint = 1 request, the open-bounties list
+// (board + bounty pane). After the view is ready, in the background: the pane's Top 5 (the leaderboard's first rows,
+// so opening the leaderboard next costs none) and, once the dates or rules are in view, the bounty's own record (rules,
+// results date). Picking a row repaints the detail pane only; a live refresh patches what changed, in place.
 import { getBounties, getBounty, getLeaderboard, background, afterReady, normalizeRows, patchRows, setHTML, oddsFor, paidPlaces, tickCountdowns,
   esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, userLink } from './shared.js';
 
@@ -13,7 +14,8 @@ async function renderBoard(el, { a, b, query }, live) {
   else if (board.sel) await renderBountyDetail(el.querySelector('.detail'), board.sel, true);
 }
 
-/** Paints the pane from the board's own list; only a bounty that is not open any more costs a request of its own. */
+/** Paints the pane from the board's own list (no request); only a bounty that is not open any more costs its own. The
+ * Top 5 is not part of the first paint: it fills in the background once the view is ready (a live refresh awaits it). */
 async function renderBountyDetail(pane, slug, live) {
   let b = boardItem(slug);
   if (!live && pane.dataset.slug !== slug) {
@@ -22,7 +24,7 @@ async function renderBountyDetail(pane, slug, live) {
     pane.scrollTop = 0;
     if (!b) pane.innerHTML = '<div class="sk"></div>';
   }
-  const top = renderTop5(pane, slug, live);
+  const top = live ? renderTop5(pane, slug, true) : void afterReady(() => background(renderTop5(pane, slug)));
   if (!b) {
     try { b = await getBounty(slug, live); } catch (e) {
       if (!shown && pane.dataset.slug === slug) pane.innerHTML = notice('Could not load this bounty', e.message, true);
@@ -48,13 +50,15 @@ async function selectBounty(el, slug, query) {
   await renderBountyDetail(pane, slug);
 }
 
-/** The pane's "Top 5 now": the same cached request as the leaderboard view, so opening the leaderboard next costs none. */
+/** The pane's "Top 5 now", a background request after the view is ready (a skeleton until then): the same cached
+ * request as the leaderboard view, so opening the leaderboard next costs none. */
 async function renderTop5(pane, slug, live) {
   if (!live) await new Promise((r) => setTimeout(r, 120)); // browsing with ↑↓ skips the boards it only passes over
   if (pane.dataset.slug !== slug) return;
   const lb = await getLeaderboard(slug, live).catch(() => null), box = pane.querySelector('.top5');
   if (!box || pane.dataset.slug !== slug) return;
   box.dataset.slug = slug;
+  box.removeAttribute('aria-busy');
   const all = lb ? normalizeRows(lb) : [], top = all.filter((r) => r.rank != null).slice(0, 5), href = `#/bounty/${encodeURIComponent(slug)}/leaderboard`;
   setHTML(box, `<h2>Top 5 now <small>of ${num(all.length)}</small></h2>${top.length ? `<ol>${top.map((r) => `<li><span class="rank">${r.rank}</span>${userLink(r.handle)}<b>${esc(r.score)}</b></li>`).join('')}</ol>`
     : `<p class="muted">${lb ? 'No ranked entries yet.' : 'Leaderboard unavailable right now.'}</p>`}<a class="more" href="${href}">Full leaderboard →</a>`);
@@ -139,7 +143,7 @@ function paintDetail(pane, b) {
 <h1>${esc(b.title)}</h1><p class="lead">${esc(b.summary || '')}</p>
 <div class="stats"></div><p class="odds"></p><p class="actions"></p>
 <dl class="dates">${dates(b)}</dl>
-<div class="rw-grid"><section class="rewards-box"></section><section class="top5" aria-label="Top 5 now"><h2>Top 5 now</h2><div class="sk"></div></section></div>
+<div class="rw-grid"><section class="rewards-box"></section><section class="top5" aria-label="Top 5 now" aria-busy="true"><h2>Top 5 now</h2><div class="sk"></div></section></div>
 ${b.description ? `<article class="prose"><h2>Description</h2>${md(b.description)}
 ${b.resolution?.summary ? `<h2>How it is scored</h2><p>${esc(b.resolution.summary)}</p>` : ''}
 ${'rules' in b && !b.rules ? '' : `<details class="rules"><summary>Full rules</summary>${b.rules ? md(b.rules) : '<p class="muted">Loading the rules…</p>'}</details>`}</article>` : ''}`;
@@ -269,4 +273,4 @@ let shown = null;
 
 wide.addEventListener('change', () => { const v = mf.view; if (v?.kind === 'board' && !board.sel && wide.matches) selectBounty(v.el, null).then(tickCountdowns); });
 
-export { renderBoard as board, renderBoard, renderBountyDetail, selectBounty, renderTop5, onKey, onSearch };
+export { renderBoard as board, onKey, onSearch };

@@ -1,5 +1,5 @@
 [
-  { "file": "1-board.jpg", "path": "#/bounty/makefun-frontend-01", "viewport": { "width": 1280, "height": 800 } },
-  { "file": "2-leaderboard.jpg", "path": "#/bounty/tiny-chess-01/leaderboard", "viewport": { "width": 1280, "height": 800 } },
-  { "file": "3-profile.jpg", "path": "#/u/icantcodefyi", "viewport": { "width": 1280, "height": 800 } }
+  { "file": "1-board.jpg", "path": "#/bounty/makefun-frontend-01", "viewport": { "width": 1280, "height": 800 }, "deviceScaleFactor": 1, "colorScheme": "light" },
+  { "file": "2-leaderboard.jpg", "path": "#/bounty/tiny-chess-01/leaderboard", "viewport": { "width": 1280, "height": 800 }, "deviceScaleFactor": 1, "colorScheme": "light" },
+  { "file": "3-profile.jpg", "path": "#/u/icantcodefyi", "viewport": { "width": 390, "height": 844 }, "deviceScaleFactor": 1, "colorScheme": "light", "note": "phone: the #1 builder on #/builders" }
 ]

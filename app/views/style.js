@@ -1,7 +1,7 @@
 // The full stylesheet, adopted by the document with the first view (index.html inlines only the critical rules: theme
 // colours, header, skeleton), so the first load stays one file and nothing paints unstyled.
-const sheet = new CSSStyleSheet();
-sheet.replaceSync(String.raw`
+const stylesheet = new CSSStyleSheet(); // full stylesheet, lazy
+stylesheet.replaceSync(String.raw`
 :root{--on-ac:#fff;--hd:#fffffff2;--ink2:#3b3844;--th:#faf9fb;--line2:#f0edf3;--hov:#fdf5f9;--okbg:#e3f4ea;--warn:#b45309;--warnbg:#fdf0e1;--soonbg:#fff8e6;--chip:#eceaf0;--red:#c62828}
 :root[data-theme=dark]{--on-ac:#1d0a13;--hd:#1c1b22f2;--ink2:#cfccd8;--th:#23212a;--line2:#2a2831;--hov:#2a2330;--okbg:#17321f;--warn:#f5b04a;--warnbg:#382a14;--soonbg:#2d2615;--chip:#2c2a33;--red:#ff8a80}
 a:hover{text-decoration:underline}
@@ -97,7 +97,7 @@ main:has(.md){max-width:1480px}
 .barcol{width:40%}
 .rbar{display:block;height:9px;min-width:3px;border-radius:9px;background:linear-gradient(90deg,var(--ac),#ec6aa0)}
 .top5{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg)}
-.top5 .sk{height:120px}
+.top5 .sk{height:146px;background:repeating-linear-gradient(var(--sk) 0 20px,transparent 20px 31px)}
 .top5 ol{list-style:none;margin:0 0 6px;padding:0}
 .top5 li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:6px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--line2);font-size:14px}
 .top5 li a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -187,8 +187,17 @@ nav{z-index:6;backdrop-filter:blur(8px)}
 .brow>[data-l]::before{content:attr(data-l);display:block;margin-bottom:2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
 .group{border-radius:10px}
 .tbl td{padding:12px 10px}
+.profile{gap:14px 16px;padding:16px}.ptotals{gap:12px 10px}.ptotals dd{font-size:21px}.links{gap:6px 14px}
+.cols>.panel{background:none;border:0;padding:0}.cols .scroll{max-height:none;overflow:visible}
+.pe,.pe tbody{display:block}.pe thead{display:none}
+.pe tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 10px;margin-bottom:10px;padding:12px 14px;border:1px solid var(--line);border-left:3px solid var(--line);border-radius:12px;background:var(--card)}
+.pe tr.paid{border-left-color:var(--ok)}
+.pe td{display:block!important;padding:0!important;border:0!important;text-align:left;font-size:15px}
+.pe td:first-child{grid-column:1/-1;font-weight:600}.pe td:first-child small{font-weight:400}
+.pe td[data-l]::before{content:attr(data-l);display:block;margin-bottom:1px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.pays li{padding:10px 0}
 }
 `);
-document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+document.adoptedStyleSheets = [...document.adoptedStyleSheets, stylesheet];
 
-export { sheet };
+export { stylesheet };

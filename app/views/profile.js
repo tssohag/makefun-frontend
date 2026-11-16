@@ -1,3 +1,4 @@
+export { renderProfile, renderBuilders, entriesByBounty };
 // #/u/<handle>: totals, entries grouped by bounty, on-chain payouts; #/builders: the rankings. One request a view.
 import { cachedFetch, esc, money, avatar, crumbs, fmtScore, shortDate, ordinal, fmtDate, imagesDecoded } from './shared.js';
 
@@ -8,17 +9,17 @@ async function renderProfile(el, { b: handle }, live) {
   const r = p.record || {}, sols = p.solutions || [], pays = p.payouts || [];
   const links = [p.github_login && [`github.com/${p.github_login}`, `https://github.com/${encodeURIComponent(p.github_login)}`],
     p.x && [`@${p.x.username} on X`, p.x.url], p.discord && [p.discord.username + ' on Discord', p.discord.url],
-    p.wallet && [`${p.wallet.address.slice(0, 4)}…${p.wallet.address.slice(-4)}`, p.wallet.explorer_url]].filter(Boolean);
+    p.wallet && [`Wallet ${p.wallet.address.slice(0, 4)}…${p.wallet.address.slice(-4)}`, p.wallet.explorer_url]].filter(Boolean);
   const rows = entriesByBounty(sols, pays);
   el.innerHTML = `${crumbs(['Top builders', '#/builders'], ['@' + p.handle])}
 <section class="profile panel">${avatar(p.avatar?.url || p.image, p.handle, 'av xl')}
-<div class="pwho"><h1>${esc(p.display_name || '@' + p.handle)}</h1><p class="muted">@${esc(p.handle)} · joined ${fmtDate(p.joined_at).split(',').slice(0, 2).join(',')}${p.house ? ' · house account' : ''}</p>
+<div class="pwho"><h1>${esc(p.display_name || '@' + p.handle)}</h1><p class="muted">${p.display_name ? `@${esc(p.handle)} · ` : ''}joined ${fmtDate(p.joined_at).split(',').slice(0, 2).join(',')}${p.house ? ' · house account' : ''}</p>
 <p class="bio${p.bio ? '' : ' muted'}">${esc(p.bio || 'No bio yet.')}</p><p class="links">${links.map(([t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t)} ↗</a>`).join('')}</p></div>
 <dl class="ptotals">${[['Wins', r.competitions_won ?? 0, 'win'], ['Winnings', money(r.prize_usd || 0), 'win'], ['Entries', sols.length.toLocaleString('en-US')], ['Bounties', r.competitions_entered ?? 0], ['Podiums', r.podium_finishes ?? 0], ['Best place', r.best_placement ? ordinal(r.best_placement) : '—']]
   .map(([k, v, c]) => `<div><dt>${k}</dt><dd${c ? ` class="${c}"` : ''}>${esc(v)}</dd></div>`).join('')}</dl></section>
 <div class="cols"><section class="panel"><h2>Entries <small>${sols.length} entries in ${rows.length} bounties</small></h2>${rows.length ? `<div class="scroll"><table class="tbl pe"><thead><tr><th>Bounty</th><th class="num">Entries</th><th class="num">Top score</th><th class="num">Place</th><th class="num">Payout</th></tr></thead><tbody>
-${rows.map((x) => `<tr><td><a href="#/bounty/${encodeURIComponent(x.c.slug)}">${esc(x.c.title)}</a><br><small class="muted">${esc(x.c.category || '')}${x.c.category ? ' · ' : ''}${x.c.status === 'resolved' ? 'resolved' : Date.parse(x.c.deadline) > Date.now() ? 'taking entries' : 'awaiting results'} · last entry ${shortDate(x.last)}</small></td>
-<td class="num">${x.n}</td><td class="num">${esc(x.score)}</td><td class="num">${x.place ? `<b class="${x.place === 1 ? 'gold' : ''}">${ordinal(x.place)}</b>` : '—'}</td><td class="num">${x.payout ? `<b class="win">${money(x.payout)}</b>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No public entries yet.</p>'}</section>
+${rows.map((x) => `<tr${x.payout ? ' class="paid"' : ''}><td><a href="#/bounty/${encodeURIComponent(x.c.slug)}">${esc(x.c.title)}</a><br><small class="muted">${esc(x.c.category || '')}${x.c.category ? ' · ' : ''}${x.c.status === 'resolved' ? 'resolved' : Date.parse(x.c.deadline) > Date.now() ? 'taking entries' : 'awaiting results'} · last entry ${shortDate(x.last)}</small></td>
+<td class="num" data-l="Entries">${x.n}</td><td class="num" data-l="Top score">${esc(x.score)}</td><td class="num" data-l="Place">${x.place ? `<b class="${x.place === 1 ? 'gold' : ''}">${ordinal(x.place)}</b>` : '—'}</td><td class="num" data-l="Payout">${x.payout ? `<b class="win">${money(x.payout)}</b>` : '—'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No public entries yet.</p>'}</section>
 <section class="panel"><h2>Payouts <small>${pays.length} paid on chain</small></h2>${pays.length ? `<ul class="pays">${pays.map((x) => `<li><b class="win">${money(x.amount_usd)}</b> <span>${x.place ? `${ordinal(x.place)} in ` : ''}<a href="#/bounty/${encodeURIComponent(x.competition.slug)}">${esc(x.competition.title)}</a><br><small class="muted">${fmtDate(x.paid_at)} · <a href="${esc(x.explorer_url)}" target="_blank" rel="noopener">tx ↗</a></small></span></li>`).join('')}</ul>` : '<p class="muted">No payouts yet.</p>'}</section></div>`;
   await imagesDecoded(el);
 }
@@ -54,4 +55,4 @@ function entriesByBounty(sols, pays) {
 
 let shown = null, builders = null;
 
-export { renderProfile as profile, renderBuilders as builders, renderProfile, renderBuilders, getProfile, getTopBuilders, entriesByBounty };
+export { renderProfile as profile, renderBuilders as builders, getProfile, getTopBuilders };

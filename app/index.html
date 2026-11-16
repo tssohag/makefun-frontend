@@ -27,7 +27,7 @@ main{max-width:1240px;margin:0 auto;padding:18px 20px 24px}
 <form><input type="search" placeholder="Search bounties or @handle" aria-label="Search"></form><span class="live">Live</span><button class="theme" aria-label="Dark theme"></button></header>
 <main></main>
 <footer class="meter"></footer>
-<script type="module">// route · cachedFetch + revalidate (memory cache, in-flight dedupe, ETag) · meter
+<script type="module">// route, cachedFetch (60s memory cache), revalidate (ETag), meter
 try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'')}catch{}
 const API='https://make.fun/api',cache=new Map,inflight=new Map,main=document.querySelector('main'),
 VIEWS={board:()=>import('./views/board.js'),leaderboard:()=>import('./views/leaderboard.js'),profile:()=>import('./views/profile.js'),builders:()=>import('./views/profile.js'),none:()=>import('./views/shared.js')};

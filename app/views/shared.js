@@ -133,10 +133,10 @@ const darkScheme = matchMedia('(prefers-color-scheme: dark)');
 function drawMeter(m) {
   const kbs = (n) => `<b>${n < 10240 ? +(n / 1024).toFixed(1) : num(Math.round(n / 1024))} KB</b>`, size = kbs(m.wire + m.json), ms = m.ms ? ` · <b>${num(m.ms)} ms</b>` : '';
   setHTML($meter, phone.matches
-    ? `<span><b>${m.req}</b> requests · <b>${m.mem}</b> cached · <b>${m.etag}</b> unchanged · ${size}${ms}${m.bg ? ` · <b>+${m.bg}</b> bg` : ''}</span>`
+    ? `<span><b>${m.req}</b> request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> cached · <b>${m.etag}</b> unchanged · ${size}${ms}${m.bg ? ` · <b>+${m.bg}</b> bg` : ''}</span>`
     : `<span>this view: <b>${m.req}</b> API request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> from cache · <b>${m.etag}</b> unchanged (ETag) · ${size} ${m.json ? 'JSON' : m.wire ? 'transferred' : 'downloaded'}${m.patched ? ` · <b>${num(m.patched)}</b> row${m.patched === 1 ? '' : 's'} patched` : ''}${m.ms ? ` · ready in <b>${num(m.ms)} ms</b>` : ''}${m.bg ? ` · <b>+${m.bg}</b> background (${kbs(m.bkb)})` : ''}</span><i>${BUILD}</i>`);
 }
-const BUILD = '1-file first load (2,530 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
+const BUILD = '1-file first load (2,514 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
 const phone = matchMedia('(max-width: 639px)');
 const $meter = document.querySelector('.meter');
 
