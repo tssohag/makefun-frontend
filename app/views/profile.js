@@ -1,8 +1,7 @@
-// #/u/<handle>: totals, entries grouped by bounty, on-chain payouts; #/builders: the rankings.
-import { cachedFetch, esc, money } from '../app.js';
-import { avatar, crumbs, fmtScore, shortDate, ordinal, fmtDate, imagesDecoded } from './bounty.js';
+// #/u/<handle>: totals, entries grouped by bounty, on-chain payouts; #/builders: the rankings. One request a view.
+import { cachedFetch, esc, money, avatar, crumbs, fmtScore, shortDate, ordinal, fmtDate, imagesDecoded } from './shared.js';
 
-async function renderProfile(el, handle, live) {
+async function renderProfile(el, { b: handle }, live) {
   const p = await getProfile(handle.replace(/^@/, ''), live);
   if (live && p === shown) return;
   shown = p;
@@ -24,10 +23,18 @@ ${rows.map((x) => `<tr><td><a href="#/bounty/${encodeURIComponent(x.c.slug)}">${
   await imagesDecoded(el);
 }
 
+async function renderBuilders(el, args, live) {
+  const res = await getTopBuilders(live);
+  if (live && res === builders) return;
+  builders = res;
+  el.innerHTML = `${crumbs(['Top builders'])}<h1>Top builders</h1><p class="muted">Ranked by competitions won, then prize money paid. ${res.total ? res.total + ' accounts ranked.' : ''}</p>
+<div class="panel scroll"><table class="tbl"><thead><tr><th class="num">Rank</th><th>Builder</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Entered</th><th class="num">Won</th></tr></thead><tbody>
+${res.items.map((u) => `<tr><td class="num rank">${u.rank}</td><td><a class="who" href="#/u/${encodeURIComponent(u.handle)}">${avatar(u.avatar?.url_small || u.image, u.handle)} @${esc(u.handle)}</a></td><td class="num">${u.record.competitions_won}</td><td class="num">${u.record.podium_finishes}</td><td class="num">${u.record.competitions_entered}</td><td class="num"><b class="win">${money(u.record.prize_usd)}</b></td></tr>`).join('')}</tbody></table></div>`;
+  await imagesDecoded(el);
+}
+
 const getProfile = (handle, f) => cachedFetch(`/profiles/${encodeURIComponent(handle)}`, f);
 const getTopBuilders = (f) => cachedFetch('/rankings?limit=50', f);
-
-let shown = null;
 
 function entriesByBounty(sols, pays) {
   const by = new Map();
@@ -45,12 +52,6 @@ function entriesByBounty(sols, pays) {
   return [...by.values()].sort((a, b) => (b.payout - a.payout) || ((a.place || 1e9) - (b.place || 1e9)) || (b.last > a.last ? 1 : -1));
 }
 
-async function renderBuilders(el, live) {
-  const res = await getTopBuilders(live);
-  el.innerHTML = `${crumbs(['Top builders'])}<h1>Top builders</h1><p class="muted">Ranked by competitions won, then prize money paid. ${res.total ? res.total + ' accounts ranked.' : ''}</p>
-<div class="panel scroll"><table class="tbl"><thead><tr><th class="num">Rank</th><th>Builder</th><th class="num">Wins</th><th class="num">Podiums</th><th class="num">Entered</th><th class="num">Won</th></tr></thead><tbody>
-${res.items.map((u) => `<tr><td class="num rank">${u.rank}</td><td><a class="who" href="#/u/${encodeURIComponent(u.handle)}">${avatar(u.avatar?.url_small || u.image, u.handle)} @${esc(u.handle)}</a></td><td class="num">${u.record.competitions_won}</td><td class="num">${u.record.podium_finishes}</td><td class="num">${u.record.competitions_entered}</td><td class="num"><b class="win">${money(u.record.prize_usd)}</b></td></tr>`).join('')}</tbody></table></div>`;
-  await imagesDecoded(el);
-}
+let shown = null, builders = null;
 
-export { getProfile, getTopBuilders, renderProfile, entriesByBounty, renderBuilders };
+export { renderProfile as profile, renderBuilders as builders, renderProfile, renderBuilders, getProfile, getTopBuilders, entriesByBounty };

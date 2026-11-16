@@ -1,36 +1,47 @@
-// #/bounty/<slug>/leaderboard: one request for every row, 50 a page in the DOM; paging re-draws the tbody only.
-import { cachedFetch, getBounty, paidPlaces, esc, notice, money, num, pot, countdown, timeBar, oddsFor, perEntry } from '../app.js';
-import { crumbs, fmtScore, shortDate, ordinal } from './bounty.js';
+// #/bounty/<slug>/leaderboard: one cached request for every row (the same one the bounty pane's Top 5 made), drawn as a
+// virtual list: only the rows in view, plus a few, are in the DOM, reused as it scrolls and patched in place on refresh.
+import { getBounty, getLeaderboard, normalizeRows, patchRows, setHTML, paidPlaces, oddsFor, esc, notice, money, num, pot, countdown, timeBar,
+  perEntry, ordinal, shortDate, crumbs, userLink } from './shared.js';
 
-async function renderLeaderboard(el, slug, live) {
+async function renderLeaderboard(el, { b: slug }, live) {
   const [lb, b] = await Promise.all([getLeaderboard(slug, live), getBounty(slug, live).catch(() => null)]);
   if (live && lb === st.data && b === st.bounty) return;
-  if (st.data?.competition?.slug !== slug) Object.assign(st, { page: 0, q: '' });
-  st.data = lb;
-  st.bounty = b;
-  st.prizes = b ? paidPlaces(b) : [];
-  st.rows = normalizeRows(lb);
+  if (st.slug !== slug) Object.assign(st, { slug, q: '' });
+  Object.assign(st, { data: lb, bounty: b, prizes: b ? paidPlaces(b) : [], rows: normalizeRows(lb) });
   const c = lb.competition || {}, col = lb.columns?.find((x) => x.key === lb.rank_key);
-  if (!live || !el.querySelector('tbody')) {
+  if (!live || !el.querySelector('.lb-head')) {
     const back = `#/bounty/${encodeURIComponent(slug)}`;
     el.innerHTML = `${crumbs([c.title || slug, back], ['Leaderboard'])}
-<section class="head-row"><div><h1>${esc(c.title || slug)} <span class="muted">leaderboard</span></h1>
-<p class="lb-meta"></p></div><a class="btn ghost" href="${back}">Bounty details</a></section>
+<section class="head-row"><div><h1>${esc(c.title || slug)} <span class="muted">leaderboard</span></h1><p class="lb-meta"></p></div><a class="btn ghost" href="${back}">Bounty details</a></section>
 <section class="lb-head panel"></section>
-${st.rows.length ? `<div class="panel"><div class="lb-tools"><input id="who" type="search" placeholder="Find a handle…" aria-label="Find a handle" value="${esc(st.q)}"><span class="count"></span><nav class="pager" aria-label="Pages"><button type="button" data-go="-1">‹ Prev</button><span class="pg"></span><button type="button" data-go="1">Next ›</button></nav></div>
-<div class="scroll"><table class="tbl lb"><thead><tr><th class="num">Rank</th><th>Entrant</th><th>Entry</th><th class="num">${esc(col?.title || 'Score')}</th><th>Interval</th><th class="num">Prize now</th><th>Valid</th><th>Received</th></tr></thead><tbody></tbody></table></div>
-<nav class="pager" aria-label="Pages"><button type="button" data-go="-1">‹ Prev</button><span class="pg"></span><button type="button" data-go="1">Next ›</button></nav></div>`
+${st.rows.length ? `<div class="panel lbp"><div class="lb-tools"><input id="who" type="search" placeholder="Find a handle…" aria-label="Find a handle" value="${esc(st.q)}"><span class="count"></span></div>
+<div class="lbrow lbh" role="row"><span class="num" title="Rank">#</span><span>Entrant</span><span>Entry</span><span class="num">${esc(col?.title || 'Score')}</span><span>Interval</span><span class="num">Prize now</span><span>Valid</span><span>Received</span></div>
+<div class="vscroll" tabindex="0" role="table" aria-label="Leaderboard rows"><div class="vsizer"><div class="vrows"></div></div></div></div>`
     : notice(lb.phase?.placements_held ? 'Placements are held' : 'No entries yet', lb.phase?.placements_held ? 'This board lists its entries once the results are published.' : 'Be the first: enter from the bounty page.')}`;
-    el.addEventListener('input', (e) => { if (e.target.id === 'who') st.q = e.target.value.trim().toLowerCase(), (st.page = 0), renderPage(el); });
-    el.addEventListener('click', (e) => { const b = e.target.closest('[data-go]'); if (b) st.page += +b.dataset.go, renderPage(el), el.querySelector('.panel').scrollIntoView({ block: 'start' }); });
+    el.querySelector('#who')?.addEventListener('input', (e) => { st.q = e.target.value.trim().toLowerCase(), filterRows(el), (el.querySelector('.vscroll').scrollTop = 0), virtualRows(el); });
+    const box = el.querySelector('.vscroll'), redraw = () => st.raf || (st.raf = requestAnimationFrame(() => ((st.raf = 0), virtualRows(el))));
+    box?.addEventListener('scroll', redraw, { passive: true });
+    if (box) new ResizeObserver(redraw).observe(box);
   }
   const ranked = st.rows.filter((r) => r.rank != null).length;
-  el.querySelector('.lb-meta').textContent = `${st.rows.length.toLocaleString('en-US')} entries · ${ranked.toLocaleString('en-US')} ranked · ${lb.phase?.title || ''} phase · ranked by ${col?.title || lb.rank_key}${lb.phase?.placements_held ? ' · places unofficial until results publish' : ''}`;
-  el.querySelector('.lb-head').innerHTML = b ? leaderboardHeader(b) : '<p class="muted">Bounty details are unavailable right now.</p>';
-  if (st.rows.length) renderPage(el);
+  el.querySelector('.lb-meta').textContent = `${num(st.rows.length)} entries · ${num(ranked)} ranked · ${lb.phase?.title || ''} phase · ranked by ${col?.title || lb.rank_key}${lb.phase?.placements_held ? ' · places unofficial until results publish' : ''}`;
+  setHTML(el.querySelector('.lb-head'), b ? leaderboardHeader(b) : '<p class="muted">Bounty details are unavailable right now.</p>');
+  if (st.rows.length) filterRows(el), virtualRows(el);
 }
 
-const getLeaderboard = (slug, f) => cachedFetch(`/competitions/${encodeURIComponent(slug)}/leaderboard?rows=first`, f);
+/** Draws the rows the scroller shows (and OVERSCAN either side) over a sizer as tall as every row: a 6,000-row board keeps ~40 rows in the DOM. */
+function virtualRows(el) {
+  const box = el.querySelector('.vscroll');
+  if (!box) return;
+  const n = st.view.length, top = box.scrollTop, h = box.clientHeight || 480;
+  const from = Math.max(0, Math.floor(top / ROW) - OVERSCAN), to = Math.min(n, Math.ceil((top + h) / ROW) + OVERSCAN);
+  el.querySelector('.vsizer').style.height = `${Math.max(n, 1) * ROW}px`;
+  const rows = el.querySelector('.vrows');
+  rows.style.transform = `translateY(${from * ROW}px)`;
+  patchRows(rows, n ? st.view.slice(from, to).map((r) => [r.id, rowHtml(r)]) : [['~none', `<div class="lbrow none">No handle matches “${esc(st.q)}”.</div>`]]);
+  const first = Math.min(n, Math.floor(top / ROW) + 1), last = Math.min(n, Math.floor((top + h) / ROW));
+  el.querySelector('.count').textContent = `Rows ${num(n ? first : 0)}–${num(last)} of ${num(n)}${st.q ? ` matching “${st.q}”` : ''} · ${rows.children.length} in the DOM (virtual list)`;
+}
 
 function leaderboardHeader(b) {
   const runs = [], o = oddsFor(b);
@@ -45,33 +56,14 @@ function leaderboardHeader(b) {
 <div class="places"><small>${st.prizes.length} paid places · ${o.per == null ? 'no entries yet' : `${perEntry(o.per)} per entry · ${o.label}`}</small><ol>${runs.map((r) => `<li><b>${ordinal(r.place)}${r.to > r.place ? `–${ordinal(r.to)}` : ''}</b> ${money(r.amountUsd)}</li>`).join('')}</ol></div>`;
 }
 
-const paginate = (rows, page) => rows.slice(page * PER, page * PER + PER);
-
-function normalizeRows(lb) {
-  const k = lb.rank_key;
-  const row = (r, v, d, valid) => ({ rank: r.rank, prize: r.prize_eligible === false ? null : r.prize_rank, handle: r.handle, title: r.title, house: r.house || r.baseline, at: r.received_at,
-    score: fmtScore(k, v, d), iv: r.interval ? `${fmtScore(k, +r.interval.low)} – ${fmtScore(k, +r.interval.high)}` : '', valid });
-  return [...(lb.entries || []).map((e) => row(e, e.values?.[k], e.display?.[k], e.values?.valid ?? +(e.rank != null))),
-    ...(lb.rest || []).map((r) => row(r, r.value, r.display, +(r.rank != null)))];
-}
-
-function renderPage(el) {
-  const rows = st.q ? st.rows.filter((r) => r.handle?.toLowerCase().includes(st.q)) : st.rows;
-  const pages = Math.max(1, Math.ceil(rows.length / PER));
-  st.page = Math.min(Math.max(st.page, 0), pages - 1);
-  el.querySelector('tbody').innerHTML = paginate(rows, st.page).map((r) => `<tr${r.house ? ' class="house"' : ''}>
-<td class="num rank">${r.rank ?? '—'}</td><td><a href="#/u/${encodeURIComponent(r.handle)}">@${esc(r.handle)}</a></td>
-<td class="ttl" title="${esc(r.title)}">${esc(r.title || '—')}</td><td class="num"><b>${esc(r.score)}</b></td>
-<td class="muted">${esc(r.iv) || '—'}</td><td class="num">${prizeFor(r)}</td><td>${r.valid ? '<span class="chip ok">✓ valid</span>' : '<span class="chip">✗</span>'}</td>
-<td class="muted">${shortDate(r.at)}</td></tr>`).join('') || `<tr><td colspan="8" class="muted">No handle matches “${esc(st.q)}”.</td></tr>`;
-  el.querySelector('.count').textContent = `Showing ${rows.length ? st.page * PER + 1 : 0}–${Math.min(rows.length, st.page * PER + PER)} of ${rows.length.toLocaleString('en-US')}`;
-  for (const n of el.querySelectorAll('.pg')) n.textContent = `Page ${st.page + 1} of ${pages}`;
-  for (const b of el.querySelectorAll('[data-go]')) b.disabled = b.dataset.go < 0 ? st.page === 0 : st.page >= pages - 1;
-}
-
+const rowHtml = (r) => `<div class="lbrow${r.house ? ' house' : ''}" role="row"><span class="num rank">${r.rank ?? '—'}</span><span class="h">${userLink(r.handle)}</span>
+<span class="ttl" title="${esc(r.title)}">${esc(r.title || '—')}</span><span class="num"><b>${esc(r.score)}</b></span><span class="muted">${esc(r.iv) || '—'}</span>
+<span class="num">${prizeFor(r)}</span><span>${r.valid ? '<i class="chip ok">✓ valid</i>' : '<i class="chip">✗</i>'}</span><span class="muted">${shortDate(r.at)}</span></div>`;
 const prizeFor = (r) => { const p = r.prize && st.prizes[r.prize - 1]; return p ? `<b class="win">${money(p.amountUsd)}</b>` : '<span class="muted">—</span>'; };
+const filterRows = () => { st.view = st.q ? st.rows.filter((r) => r.handle.toLowerCase().includes(st.q)) : st.rows; };
+const onKey = (k) => k === 'Escape' && ((location.hash = `#/bounty/${encodeURIComponent(st.slug)}`), true);
 
-const PER = 50;
-const st = { data: null, bounty: null, prizes: [], rows: [], page: 0, q: '' };
+const ROW = 40, OVERSCAN = 8;
+const st = { slug: null, data: null, bounty: null, prizes: [], rows: [], view: [], q: '', raf: 0 };
 
-export { getLeaderboard, renderLeaderboard, leaderboardHeader, paginate, normalizeRows };
+export { renderLeaderboard as leaderboard, renderLeaderboard, virtualRows, leaderboardHeader, onKey };
