@@ -3,8 +3,8 @@ export { renderBoard, renderBountyDetail, renderTop5, selectBounty };
 // (board + bounty pane). After the view is ready, in the background: the pane's Top 5 (the leaderboard's first rows,
 // so opening the leaderboard next costs none) and, once the dates or rules are in view, the bounty's own record (rules,
 // results date). Picking a row repaints the detail pane only; a live refresh patches what changed, in place.
-import { getBounties, getBounty, getLeaderboard, background, afterReady, normalizeRows, patchRows, setHTML, oddsFor, paidPlaces, tickCountdowns,
-  esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, userLink } from './shared.js';
+import { getBounties, getBounty, getLeaderboard, background, afterReady, normalizeRows, patchRows, setHTML, oddsFor, paidPlaces, placeRuns, placeLabel, tickCountdowns,
+  esc, num, money, pot, countdown, timeBar, perEntry, notice, fmtDate, userLink } from './shared.js';
 
 async function renderBoard(el, { a, b, query }, live) {
   if (!live) readQuery(query);
@@ -198,11 +198,13 @@ function statusChip(b) {
   return `<span class="chip ${cls}">${esc(t)}</span>`;
 }
 
+/** The rewards now, consecutive places that pay the same in one row ("4th–10th · $24.84 each"), bars per place, the live pot below. */
 function rewardsTable(b) {
-  const rows = paidPlaces(b), usd = (r) => Number(r.amountUsd);
-  const fees = rows.some((r) => Number(r.feeShareUsd) > 0), max = Math.max(...rows.map(usd), 1);
-  return `<h2>Rewards <small>${rows.length} paid places · ${money(rows.reduce((s, r) => s + usd(r), 0))}</small></h2>${rows.length ? `<table class="tbl rw"><thead><tr><th>Place</th><th class="barcol"></th>${fees ? '<th class="num">Fee share</th>' : ''}<th class="num">Pays now</th></tr></thead><tbody>
-${rows.map((r) => `<tr><td>${ordinal(r.place)}</td><td class="barcol"><span class="rbar" style="width:${(usd(r) / max * 100).toFixed(1)}%"></span></td>${fees ? `<td class="num fs">+${money(r.feeShareUsd)}</td>` : ''}<td class="num"><b>${money(r.amountUsd)}</b></td></tr>`).join('')}</tbody></table>` : '<p class="muted">No prize table published.</p>'}
+  const rows = paidPlaces(b), runs = placeRuns(rows), usd = (r) => Number(r.amountUsd), sum = (k) => Math.round(rows.reduce((s, r) => s + Number(r[k] || 0), 0) * 100) / 100;
+  const fees = rows.some((r) => Number(r.feeShareUsd) > 0), max = Math.max(...rows.map(usd), 1), cols = fees ? 4 : 3;
+  return `<h2>Rewards <small>${rows.length} paid place${rows.length === 1 ? '' : 's'}</small></h2>${rows.length ? `<table class="tbl rw"><thead><tr><th>Place</th><th class="barcol"></th>${fees ? '<th class="num">Fee share</th>' : ''}<th class="num">Pays now</th></tr></thead><tbody>
+${runs.map((r) => `<tr><td>${placeLabel(r)}</td><td class="barcol"><span class="rbar" style="width:${(usd(r) / max * 100).toFixed(1)}%"></span></td>${fees ? `<td class="num fs">+${money(r.feeShareUsd)}</td>` : ''}<td class="num"><b>${money(r.amountUsd)}</b>${r.n > 1 ? ' <small>each</small>' : ''}</td></tr>`).join('')}</tbody>
+<tfoot><tr><td colspan="${cols - (fees ? 2 : 1)}">Live pot</td>${fees ? `<td class="num fs">+${money(sum('feeShareUsd'))}</td>` : ''}<td class="num"><b>${money(sum('amountUsd'))}</b></td></tr></tfoot></table>` : '<p class="muted">No prize table published.</p>'}
 ${b.entryFeeUsd ? '<p class="muted note">Every entry fee grows the pot; the fee share is split over the paid places.</p>' : ''}`;
 }
 

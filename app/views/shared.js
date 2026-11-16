@@ -1,7 +1,39 @@
-// Shared by every view: countdowns, live refresh, keyboard, theme, search; in-place row patching; formatting; the API
-// calls the views share: the open-bounties list feeds the board, the bounty pane and the leaderboard's header, and the
+export { cachedFetch, revalidate, meter };
+// Shared by every view: the API cache (cachedFetch: 60 s in memory, one request in flight a path; revalidate: ETag)
+// and the meter, which index.html's route resets; countdowns, live refresh, keyboard, theme, search; in-place row
+// patching; formatting. The open-bounties list feeds the board, the bounty pane and the leaderboard's header, and the
 // bounty pane's Top 5 is the leaderboard's own request, so going from a bounty to its leaderboard costs none.
-const { cachedFetch, route, meter } = self.mf;
+const { route } = self.mf, API = 'https://make.fun/api', cache = new Map(), inflight = new Map();
+
+/** API answers stay in memory for 60 s, and one request in flight serves every caller of the same path. */
+function cachedFetch(path, fresh) {
+  const hit = cache.get(path);
+  if ((hit && !fresh && Date.now() - hit.at < 6e4) || inflight.has(path)) return meter.add('mem'), inflight.get(path) || Promise.resolve(hit.data);
+  inflight.set(path, revalidate(path, hit).finally(() => inflight.delete(path)));
+  return inflight.get(path);
+}
+
+/** Asks the API again: an unchanged ETag keeps the cached answer, and so does a network failure. */
+async function revalidate(path, hit) {
+  meter.add('req');
+  let res;
+  try { res = await fetch(API + path, { cache: 'no-cache', signal: AbortSignal.timeout(2e4) }); } catch (e) { if (hit) return hit.data; throw e; }
+  const etag = res.headers.get('ETag');
+  if (hit && etag && etag === hit.etag) return meter.add('etag'), (hit.at = Date.now()), hit.data;
+  if (!res.ok) throw Error(res.status === 404 ? 'Not found' : 'HTTP ' + res.status);
+  const text = await res.text(), data = JSON.parse(text), t = performance.getEntriesByName(res.url).at(-1)?.transferSize;
+  meter.add(t ? 'wire' : 'json', t || text.length);
+  cache.set(path, { data, etag, at: Date.now() });
+  return data;
+}
+
+/** What the view on screen cost, reset by each route (index.html sets mf.t0): first-paint requests, cache hits,
+ * ETag-unchanged answers, bytes, rows patched, time to ready, then anything after ready as background. */
+const meter = {
+  reset() { self.__shotReady = false; Object.assign(meter, { req: 0, mem: 0, etag: 0, wire: 0, json: 0, bg: 0, bkb: 0, patched: 0, t0: mf.t0 || 0, ms: 0 }).show(); },
+  add(k, n = 1) { if (meter.ms && !/m|g/.test(k)) k = k === 'req' ? 'bg' : 'bkb'; meter[k] += n; meter.show(); },
+  show() { drawMeter(meter); },
+};
 
 function tickCountdowns() {
   const now = Date.now();
@@ -48,6 +80,17 @@ function oddsFor(b) {
 }
 const paidPlaces = (b) => (b.rewardsNow?.length ? b.rewardsNow
   : Object.entries(b.rewards || {}).map(([place, v]) => ({ place: +place, baseUsd: v, feeShareUsd: 0, amountUsd: v })));
+/** Consecutive places that pay the same, one run each ({ ...first, to, n }); 1st, 2nd and 3rd always stand alone. */
+function placeRuns(rows) {
+  const runs = [];
+  for (const r of rows) {
+    const l = runs.at(-1);
+    if (l && r.place > 3 && l.place > 3 && l.to === r.place - 1 && +l.amountUsd === +r.amountUsd && +l.feeShareUsd === +r.feeShareUsd) l.to = r.place, l.n++;
+    else runs.push({ ...r, to: r.place, n: 1 });
+  }
+  return runs;
+}
+const placeLabel = (r) => ordinal(r.place) + (r.to > r.place ? `–${ordinal(r.to)}` : '');
 
 /** Puts `rows` ([key, html] pairs) in `box` in order, reusing every node whose html is unchanged: only changed rows are replaced. */
 function patchRows(box, rows) {
@@ -136,14 +179,16 @@ function drawMeter(m) {
     ? `<span><b>${m.req}</b> request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> cached · <b>${m.etag}</b> unchanged · ${size}${ms}${m.bg ? ` · <b>+${m.bg}</b> bg` : ''}</span>`
     : `<span>this view: <b>${m.req}</b> API request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> from cache · <b>${m.etag}</b> unchanged (ETag) · ${size} ${m.json ? 'JSON' : m.wire ? 'transferred' : 'downloaded'}${m.patched ? ` · <b>${num(m.patched)}</b> row${m.patched === 1 ? '' : 's'} patched` : ''}${m.ms ? ` · ready in <b>${num(m.ms)} ms</b>` : ''}${m.bg ? ` · <b>+${m.bg}</b> background (${kbs(m.bkb)})` : ''}</span><i>${BUILD}</i>`);
 }
-const BUILD = '1-file first load (2,514 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
+const BUILD = '1-file first load (1,985 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
 const phone = matchMedia('(max-width: 639px)');
-const $meter = document.querySelector('.meter');
+const $meter = document.body.appendChild(document.createElement('footer'));
+$meter.className = 'meter';
 
 // Wiring, once, when the first view loads.
-mf.draw = drawMeter;
+mf.meter = meter;
 mf.ready = () => {
   const n = ++readyN;
+  meter.ms = Math.round(performance.now() - meter.t0), meter.show();
   for (const fn of later.splice(0)) fn();
   // The screenshot hook waits two frames (lazy loads start when their section is in view) and for the work they start.
   requestAnimationFrame(() => requestAnimationFrame(() => Promise.allSettled(pending).then(() => { if (n === readyN && meter.ms) self.__shotReady = true; })));
@@ -176,7 +221,7 @@ applyTheme();
 bindKeyboard();
 setInterval(tickCountdowns, 1e3);
 setInterval(liveRefresh, 60e3);
-drawMeter(meter);
+meter.reset();
 
-export { tickCountdowns, liveRefresh, bindKeyboard, applyTheme, patchRows, setHTML, oddsFor, paidPlaces, getBounties, getBounty, bountyFor, getLeaderboard, background, afterReady, normalizeRows,
-  cachedFetch, route, meter, esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, shortDate, fmtScore, imagesDecoded, avatar, crumbs, userLink, none };
+export { tickCountdowns, liveRefresh, bindKeyboard, applyTheme, patchRows, setHTML, oddsFor, paidPlaces, placeRuns, placeLabel, getBounties, getBounty, bountyFor, getLeaderboard, background, afterReady, normalizeRows,
+  route, esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, shortDate, fmtScore, imagesDecoded, avatar, crumbs, userLink, none };

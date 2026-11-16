@@ -3,8 +3,8 @@ export { renderLeaderboard, virtualRows, leaderboardHeader };
 // cached request the bounty pane's Top 5 made; the header comes from the open-bounties list the board made. So from a
 // bounty this view costs no request, and loaded directly it costs those two. Drawn as a virtual list: only the rows in
 // view, plus a few, are in the DOM, reused as it scrolls and patched in place on refresh.
-import { bountyFor, getLeaderboard, normalizeRows, patchRows, setHTML, paidPlaces, oddsFor, esc, notice, money, num, pot, countdown, timeBar,
-  perEntry, ordinal, shortDate, crumbs, userLink } from './shared.js';
+import { bountyFor, getLeaderboard, normalizeRows, patchRows, setHTML, paidPlaces, placeRuns, placeLabel, oddsFor, esc, notice, money, num, pot, countdown, timeBar,
+  perEntry, shortDate, crumbs, userLink } from './shared.js';
 
 async function renderLeaderboard(el, { b: slug }, live) {
   const [lb, b] = await Promise.all([getLeaderboard(slug, live), bountyFor(slug, live).catch(() => null)]);
@@ -47,16 +47,12 @@ function virtualRows(el) {
 }
 
 function leaderboardHeader(b) {
-  const runs = [], o = oddsFor(b);
-  for (const r of st.prizes) {
-    const last = runs.at(-1);
-    if (last && last.amountUsd === r.amountUsd) last.to = r.place; else runs.push({ ...r, to: r.place });
-  }
+  const runs = placeRuns(st.prizes), o = oddsFor(b);
   return `<div class="stats"><div class="potbig"><small>Live pot</small><b>${money(pot(b))}</b></div>
 <div><small>Time left</small><b>${countdown(b.deadline)}</b>${timeBar(b.opensAt || b.publishedAt, b.deadline)}</div>
 <div><small>Entry fee</small><b>${b.entryFeeUsd ? money(b.entryFeeUsd) : 'Free'}</b></div>
 <div><small>Entries</small><b>${num(b.submissionCount)}</b></div></div>
-<div class="places"><small>${st.prizes.length} paid places · ${o.per == null ? 'no entries yet' : `${perEntry(o.per)} per entry · ${o.label}`}</small><ol>${runs.map((r) => `<li><b>${ordinal(r.place)}${r.to > r.place ? `–${ordinal(r.to)}` : ''}</b> ${money(r.amountUsd)}</li>`).join('')}</ol></div>`;
+<div class="places"><small>${st.prizes.length} paid places · ${o.per == null ? 'no entries yet' : `${perEntry(o.per)} per entry · ${o.label}`}</small><ol>${runs.map((r) => `<li><b>${placeLabel(r)}</b> ${money(r.amountUsd)}${r.n > 1 ? ' each' : ''}</li>`).join('')}</ol></div>`;
 }
 
 const rowHtml = (r) => `<div class="lbrow${r.house ? ' house' : ''}" role="row"><span class="num rank">${r.rank ?? '—'}</span><span class="h">${userLink(r.handle)}</span>
