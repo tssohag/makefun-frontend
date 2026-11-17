@@ -1,40 +1,11 @@
 export { cachedFetch, revalidate, meter };
-// Shared by every view: show (index.html's global route names the view the hash asks for, show draws it), the API
-// cache (cachedFetch: 60 s in memory, one request in flight a path; revalidate: ETag) and the meter, which show resets;
+// Shared by every view: show (index.html's route names the view the hash asks for and its literal import(), show draws
+// it), the API cache index.html declares (cachedFetch: 60 s in memory, one request in flight a path; revalidate: ETag)
+// and its meter, which show resets and drawMeter draws;
 // countdowns, live refresh, keyboard, theme, search; in-place row patching; formatting. The open-bounties list feeds
 // the board, the bounty pane and the leaderboard's header, and the bounty pane's Top 5 is the leaderboard's own
 // request, so going from a bounty to its leaderboard costs none.
-const API = 'https://make.fun/api', cache = new Map(), inflight = new Map();
-
-/** API answers stay in memory for 60 s, and one request in flight serves every caller of the same path. */
-function cachedFetch(path, fresh) {
-  const hit = cache.get(path);
-  if ((hit && !fresh && Date.now() - hit.at < 6e4) || inflight.has(path)) return meter.add('mem'), inflight.get(path) || Promise.resolve(hit.data);
-  inflight.set(path, revalidate(path, hit).finally(() => inflight.delete(path)));
-  return inflight.get(path);
-}
-
-/** Asks the API again: an unchanged ETag keeps the cached answer, and so does a network failure. */
-async function revalidate(path, hit) {
-  meter.add('req');
-  let res;
-  try { res = await fetch(API + path, { cache: 'no-cache', signal: AbortSignal.timeout(2e4) }); } catch (e) { if (hit) return hit.data; throw e; }
-  const etag = res.headers.get('ETag');
-  if (hit && etag && etag === hit.etag) return meter.add('etag'), (hit.at = Date.now()), hit.data;
-  if (!res.ok) throw Error(res.status === 404 ? 'Not found' : 'HTTP ' + res.status);
-  const text = await res.text(), data = JSON.parse(text), t = performance.getEntriesByName(res.url).at(-1)?.transferSize;
-  meter.add(t ? 'wire' : 'json', t || text.length);
-  cache.set(path, { data, etag, at: Date.now() });
-  return data;
-}
-
-/** What the view on screen cost, reset by each show (t0: when it started, 0 for the first load): first-paint requests,
- * cache hits, ETag-unchanged answers, bytes, rows patched, time to ready, then anything after ready as background. */
-const meter = {
-  reset(t0) { self.__shotReady = false; Object.assign(meter, { req: 0, mem: 0, etag: 0, wire: 0, json: 0, bg: 0, bkb: 0, patched: 0, t0: t0 || 0, ms: 0 }).show(); },
-  add(k, n = 1) { if (meter.ms && !/m|g/.test(k)) k = k === 'req' ? 'bg' : 'bkb'; meter[k] += n; meter.show(); },
-  show() { drawMeter(meter); },
-};
+const { route, cachedFetch, revalidate, meter } = mf; // declared by index.html's scripts
 
 function tickCountdowns() {
   const now = Date.now();
@@ -180,7 +151,7 @@ function drawMeter(m) {
     ? `<span><b>${m.req}</b> request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> cached · <b>${m.etag}</b> unchanged · ${size}${ms}${m.bg ? ` · <b>+${m.bg}</b> bg` : ''}</span>`
     : `<span>this view: <b>${m.req}</b> API request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> from cache · <b>${m.etag}</b> unchanged (ETag) · ${size} ${m.json ? 'JSON' : m.wire ? 'transferred' : 'downloaded'}${m.patched ? ` · <b>${num(m.patched)}</b> row${m.patched === 1 ? '' : 's'} patched` : ''}${m.ms ? ` · ready in <b>${num(m.ms)} ms</b>` : ''}${m.bg ? ` · <b>+${m.bg}</b> background (${kbs(m.bkb)})` : ''}</span><i>${BUILD}</i>`);
 }
-const BUILD = '1-file first load (1,493 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
+const BUILD = '1-file first load (2,191 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
 const phone = matchMedia('(max-width: 639px)');
 const $meter = document.createElement('footer'); // put on the page with the first view, once the stylesheet is in
 $meter.className = 'meter';
@@ -189,21 +160,20 @@ $meter.className = 'meter';
  * holds its place until then); picking another bounty on the board repaints the detail pane only; live: refreshes the
  * view on screen in place. */
 async function show(live) {
-  const { path, kind, ...args } = route();
+  const { path, kind, load, ...args } = route();
   if (live) return view?.path === path && view.run(view.el, args, 1);
   const my = ++seq, el = document.createElement('div');
   meter.reset(my > 1 && performance.now());
   if (kind === 'board' && view?.kind === kind) return (view.path = path), view.mod.selectBounty(view.el, args.a && args.b, args.query).then(() => ready(my));
   document.documentElement.dataset.k = kind, ($main.innerHTML = '<div class=sk>'), scrollTo(0, 0);
   let mod, run;
-  try { [mod] = await Promise.all([VIEWS[kind](), styled]); await (run = mod[kind])(el, args); }
+  try { [mod] = await Promise.all([load(), styled]); await (run = mod[kind])(el, args); }
   catch (e) { el.innerHTML = '<p class=empty><button data-retry>Retry</button>'; el.firstChild.prepend(`Could not load: ${e.message} `); }
   if (my === seq) (view = { el, path, kind, mod, run }), $main.replaceChildren(el), $meter.isConnected || document.body.append($meter), ready(my);
 }
-const VIEWS = { board: () => import('./board.js'), leaderboard: () => import('./leaderboard.js'), profile: () => import('./profile.js'), builders: () => import('./profile.js'), none: async () => ({ none }) };
 const styled = import('./style.js');
 let view, seq = 0;
-self.mf = { route, show, get view() { return view; } };
+Object.defineProperties(mf, { show: { value: show }, draw: { value: drawMeter }, view: { get: () => view } });
 
 /** The view is on screen: the meter's time to ready, the nav, the title, the Live stamp, then the background work. */
 function ready(my) {

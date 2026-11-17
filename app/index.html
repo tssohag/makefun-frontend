@@ -3,14 +3,32 @@
 <meta charset=utf-8>
 <meta name=viewport content="width=device-width">
 <title>make.fun bounties</title>
-<script>// route; shared.js: cachedFetch (60s), revalidate (ETag), meter
+<script>function route(){
+const[path,query='']=location.hash.replace(/^#\/?/,'').split('?'),[a,b,c]=path.split('/').map(decodeURIComponent),
+kind=!a||a=='bounty'&&b&&!c?'board':a=='bounty'&&c=='leaderboard'?'leaderboard':a=='u'&&b?'profile':a=='builders'&&!b?'builders':'none';
+return{path,kind,a,b,c,query,load:VIEWS[kind]}}
+const VIEWS={board:()=>import('./views/board.js'),leaderboard:()=>import('./views/leaderboard.js'),profile:()=>import('./views/profile.js'),builders:()=>import('./views/profile.js'),none:()=>import('./views/shared.js')}</script>
+<script>function cachedFetch(path,fresh){ // 60s cache, in-flight dedupe; revalidate ETag; meter
+const hit=cache.get(path);
+if(hit&&!fresh&&Date.now()-hit.at<6e4||inflight.has(path))return meter.add('mem'),inflight.get(path)||Promise.resolve(hit.data);
+inflight.set(path,revalidate(path,hit).finally(()=>inflight.delete(path)));return inflight.get(path)}
+const API='https://make.fun/api',cache=new Map,inflight=new Map</script>
+<script>async function revalidate(path,hit){
+meter.add('req');let res;
+try{res=await fetch(API+path,{cache:'no-cache',signal:AbortSignal.timeout(2e4)})}catch(e){if(hit)return hit.data;throw e}
+const etag=res.headers.get('ETag');
+if(hit&&etag&&etag==hit.etag)return meter.add('etag'),hit.at=Date.now(),hit.data;
+if(!res.ok)throw Error(res.status==404?'Not found':'HTTP '+res.status);
+const text=await res.text(),data=JSON.parse(text),t=performance.getEntriesByName(res.url).at(-1)?.transferSize;
+meter.add(t?'wire':'json',t||text.length);cache.set(path,{data,etag,at:Date.now()});return data}</script>
+<script>const meter={
+reset(t0){self.__shotReady=!1;Object.assign(meter,{req:0,mem:0,etag:0,wire:0,json:0,bg:0,bkb:0,patched:0,t0:t0||0,ms:0}).show()},
+add(k,n=1){meter.ms&&!/m|g/.test(k)&&(k=k=='req'?'bg':'bkb');meter[k]+=n;meter.show()},
+show(){mf.draw?.(meter)}};
+self.mf={route,cachedFetch,revalidate,meter};
 try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'')}catch{}
-function route(){
-const[path,query='']=location.hash.replace(/^#\/?/,'').split('?'),[a,b,c]=path.split('/').map(decodeURIComponent);
-return{path,a,b,c,query,kind:!a||a=='bounty'&&b&&!c?'board':a=='bounty'&&c=='leaderboard'?'leaderboard':a=='u'&&b?'profile':a=='builders'&&!b?'builders':'none'}}
 document.documentElement.dataset.k=route().kind;
-import('./views/shared.js').catch(e=>document.querySelector('main').textContent=e.message);
-</script>
+import('./views/shared.js').catch(e=>document.querySelector('main').textContent=e.message)</script>
 <style>
 :root{--ac:#c2185b;--ink:#17151c;--mut:#5d5a68;--bg:#f6f5f8;--card:#fff;--line:#e6e2ec;--ok:#17703f}
 [data-theme=dark]{--ac:#f48fb1;--ink:#ecebf1;--mut:#a9a5b5;--bg:#121116;--card:#1c1b22;--line:#34313d;--ok:#5fd394}

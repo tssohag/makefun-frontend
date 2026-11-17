@@ -1,6 +1,6 @@
 // The full stylesheet, adopted by the document with the first view (index.html inlines only the critical rules: theme
 // colours, header, skeleton), so the first load stays one file and nothing paints unstyled.
-const stylesheet = new CSSStyleSheet(); // full stylesheet, lazy
+const stylesheet = new CSSStyleSheet();
 stylesheet.replaceSync(String.raw`
 :root{--r:12px;--ac2:#fce4ef;--sk:#ebe8ef;--on-ac:#fff;--hd:#fffffff2;--ink2:#3b3844;--th:#faf9fb;--line2:#f0edf3;--hov:#fdf5f9;--okbg:#e3f4ea;--warn:#a14807;--warnbg:#fdf0e1;--soonbg:#fff8e6;--chip:#eceaf0;--red:#c62828}
 :root[data-theme=dark]{--ac2:#3b1f2d;--sk:#24222b;--on-ac:#1d0a13;--hd:#1c1b22f2;--ink2:#cfccd8;--th:#23212a;--line2:#2a2831;--hov:#2a2330;--okbg:#17321f;--warn:#f5b04a;--warnbg:#382a14;--soonbg:#2d2615;--chip:#2c2a33;--red:#ff8a80}
