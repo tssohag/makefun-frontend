@@ -4,7 +4,7 @@ export { renderBoard, renderBountyDetail, renderTop5, selectBounty };
 // so opening the leaderboard next costs none) and, once the dates or rules are in view, the bounty's own record (rules,
 // results date). Picking a row repaints the detail pane only; a live refresh patches what changed, in place.
 import { getBounties, getBounty, getLeaderboard, background, afterReady, normalizeRows, patchRows, setHTML, oddsFor, paidPlaces, placeRuns, placeLabel, tickCountdowns,
-  esc, num, money, pot, countdown, timeBar, perEntry, notice, fmtDate, userLink, show } from './shared.js';
+  esc, num, money, pot, countdown, timeBar, perEntry, notice, fmtDate, shortDate, userLink, show } from './shared.js';
 
 async function renderBoard(el, { a, b, query }, live) {
   if (!live) readQuery(query);
@@ -82,8 +82,8 @@ function onSearch() {
 }
 
 function paintBoard(el) {
-  const { open, soon } = boardGroups();
-  const cats = ['All', ...new Set([...open, ...soon].map((b) => b.category).filter(Boolean).sort())];
+  const { open, soon, judging } = boardGroups();
+  const cats = ['All', ...new Set([...open, ...soon, ...judging].map((b) => b.category).filter(Boolean).sort())];
   if (!cats.includes(board.cat)) board.cat = 'All';
   if (!el.querySelector('.md')) {
     el.innerHTML = `<div class="md"><section class="board" aria-label="Live bounties">
@@ -108,12 +108,15 @@ function updateRows(el) {
   el.querySelector('select').value = board.sort;
   const q = document.querySelector('header input').value.trim().toLowerCase();
   const keep = (b) => (board.cat === 'All' || b.category === board.cat) && (!q || q[0] === '@' || `${b.title} ${b.category} ${b.summary}`.toLowerCase().includes(q));
-  const { open, soon } = boardGroups();
-  const rows = open.filter(keep).sort(SORTS[board.sort][1]), later = soon.filter(keep);
+  const { open, soon, judging } = boardGroups(), by = SORTS[board.sort][1];
+  const rows = open.filter(keep).sort(by), later = soon.filter(keep).sort(by);
+  // Judging: past the deadline, results pending; most recent deadline first unless another sort is picked.
+  const done = judging.filter(keep).sort(board.sort === 'soon' ? (x, y) => Date.parse(y.deadline) - Date.parse(x.deadline) : by);
   for (const c of el.querySelectorAll('[data-cat]')) c.setAttribute('aria-pressed', c.dataset.cat === board.cat);
   patchRows(el.querySelector('.rows'), [...rows.map((b) => [b.slug, boardRow(b)]),
     ...(later.length ? [['~soon', `<div class="group"><span>Opening soon · ${later.length}</span></div>`], ...later.map((b) => [b.slug, boardRow(b, true)])] : []),
-    ...(rows.length + later.length ? [] : [['~none', `<div class="none">${q ? `Nothing matches “${esc(q)}”.` : 'No live bounties in this category right now.'}</div>`]])]);
+    ...(done.length ? [['~judging', `<div class="group"><span>Judging · results soon · ${done.length}</span></div>`], ...done.map((b) => [b.slug, judgingRow(b)])] : []),
+    ...(rows.length + later.length + done.length ? [] : [['~none', `<div class="none">${q ? `Nothing matches “${esc(q)}”.` : 'No live bounties in this category right now.'}</div>`]])]);
   markSelected(el);
   tickCountdowns();
 }
@@ -126,6 +129,23 @@ function boardRow(b, soon) {
 <span class="tl" data-l="Time left">${soon ? `<small>opens in</small> ${countdown(b.publishedAt)}` : countdown(b.deadline) + timeBar(b.publishedAt, b.deadline)}</span>
 <span class="num" data-l="Entries">${num(b.submissionCount)}</span>
 <span class="num od" data-l="Your odds"><b>${o.per == null ? '—' : perEntry(o.per)}</b><small>${o.label}</small></span></a>`;
+}
+
+/** A bounty past its deadline, results pending: the time column says when it closed (or when results are due, if the
+ * data has it), the odds column how many places it pays. */
+function judgingRow(b) {
+  const fee = Number(b.entryFeeUsd || 0), places = oddsFor(b).places, due = b.phases?.at(-1)?.endsAt;
+  return `<a class="brow" href="#/bounty/${encodeURIComponent(b.slug)}" data-slug="${esc(b.slug)}">
+<span class="bt"><b>${esc(b.title)}</b><small><i class="cat">${esc(b.category || 'Bounty')}</i>${esc(b.sponsor?.name || '')}</small></span>
+<span class="num pot" data-l="Live pot">${money(pot(b))}<small class="${fee ? 'fee' : 'free'}">${fee ? `${money(fee)} entry` : 'free entry'}</small></span>
+<span class="tl" data-l="Status">${due && Date.parse(due) > Date.now() ? `<small>results by</small> ${shortDate(due)}` : `<small>closed</small> ${ago(b.deadline)}`}</span>
+<span class="num" data-l="Entries">${num(b.submissionCount)}</span>
+<span class="num od" data-l="Paid places"><b>${places || '—'}</b><small>${places ? `place${places === 1 ? '' : 's'} paid` : 'no paid places'}</small></span></a>`;
+}
+/** "3h ago", "2d ago": coarse, so a row's markup changes at most once a minute in its first hour. */
+function ago(iso) {
+  const m = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 6e4)), h = Math.floor(m / 60);
+  return m < 60 ? `${m}m ago` : h < 48 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
 }
 
 function markSelected(el) {
@@ -262,8 +282,9 @@ function readQuery(query) {
 }
 
 function boardGroups(now = Date.now()) {
-  const items = (board.data?.items || []).filter((b) => !b.demo && Date.parse(b.deadline) > now);
-  return { open: items.filter((b) => !(Date.parse(b.publishedAt) > now)), soon: items.filter((b) => Date.parse(b.publishedAt) > now) };
+  const all = (board.data?.items || []).filter((b) => !b.demo), items = all.filter((b) => Date.parse(b.deadline) > now);
+  return { open: items.filter((b) => !(Date.parse(b.publishedAt) > now)), soon: items.filter((b) => Date.parse(b.publishedAt) > now),
+    judging: all.filter((b) => b.status === 'open' && !(Date.parse(b.deadline) > now)) };
 }
 const boardItem = (slug) => board.data?.items.find((b) => b.slug === slug);
 const SORTS = { soon: ['Ending soon', (x, y) => Date.parse(x.deadline) - Date.parse(y.deadline)],
