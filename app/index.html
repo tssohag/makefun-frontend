@@ -1,54 +1,5 @@
-<!doctype html>
-<html lang=en>
-<meta charset=utf-8>
-<meta name=viewport content="width=device-width">
-<title>make.fun bounties</title>
-<script>function route(){
-const[path,query='']=location.hash.replace(/^#\/?/,'').split('?'),[a,b,c]=path.split('/').map(decodeURIComponent),
-kind=!a||a=='bounty'&&b&&!c?'board':a=='bounty'&&c=='leaderboard'?'leaderboard':a=='u'&&b?'profile':a=='builders'&&!b?'builders':'none';
-return{path,kind,a,b,c,query,load:VIEWS[kind]}}
-const VIEWS={board:()=>import('./views/board.js'),leaderboard:()=>import('./views/leaderboard.js'),profile:()=>import('./views/profile.js'),builders:()=>import('./views/profile.js'),none:()=>import('./views/shared.js')}</script>
-<script>function cachedFetch(path,fresh){ // 60s cache, in-flight dedupe; revalidate ETag; meter
-const hit=cache.get(path);
-if(hit&&!fresh&&Date.now()-hit.at<6e4||inflight.has(path))return meter.add('mem'),inflight.get(path)||Promise.resolve(hit.data);
-inflight.set(path,revalidate(path,hit).finally(()=>inflight.delete(path)));return inflight.get(path)}
-const API='https://make.fun/api',cache=new Map,inflight=new Map</script>
-<script>async function revalidate(path,hit){
-meter.add('req');let res;
-try{res=await fetch(API+path,{cache:'no-cache',signal:AbortSignal.timeout(2e4)})}catch(e){if(hit)return hit.data;throw e}
-const etag=res.headers.get('ETag');
-if(hit&&etag&&etag==hit.etag)return meter.add('etag'),hit.at=Date.now(),hit.data;
-if(!res.ok)throw Error(res.status==404?'Not found':'HTTP '+res.status);
-const text=await res.text(),data=JSON.parse(text),t=performance.getEntriesByName(res.url).at(-1)?.transferSize;
-meter.add(t?'wire':'json',t||text.length);cache.set(path,{data,etag,at:Date.now()});return data}</script>
-<script>const meter={
-reset(t0){self.__shotReady=!1;Object.assign(meter,{req:0,mem:0,etag:0,wire:0,json:0,bg:0,bkb:0,patched:0,t0:t0||0,ms:0}).show()},
-add(k,n=1){meter.ms&&!/m|g/.test(k)&&(k=k=='req'?'bg':'bkb');meter[k]+=n;meter.show()},
-show(){mf.draw?.(meter)}};
-self.mf={route,cachedFetch,revalidate,meter};
-try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'')}catch{}
-document.documentElement.dataset.k=route().kind;
-import('./views/shared.js').catch(e=>document.querySelector('main').textContent=e.message)</script>
-<style>
-:root{--ac:#c2185b;--ink:#17151c;--mut:#5d5a68;--bg:#f6f5f8;--card:#fff;--line:#e6e2ec;--ok:#17703f}
-[data-theme=dark]{--ac:#f48fb1;--ink:#ecebf1;--mut:#a9a5b5;--bg:#121116;--card:#1c1b22;--line:#34313d;--ok:#5fd394}
-*{box-sizing:border-box}
-body{margin:0;font:15px/1.5 system-ui;color:var(--ink);background:var(--bg)}
-a{color:var(--ac);text-decoration:none}
-header{display:flex;align-items:center;gap:22px;padding:10px max(20px,50% - 620px);background:var(--card);border-bottom:1px solid var(--line)}
-header>a{font-size:21px;color:var(--ink);font-weight:700;letter-spacing:-.02em}
-header b{color:var(--ac)}
-header small{margin-left:6px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
-nav{display:flex;gap:4px}
-nav>*{font:inherit;color:var(--ink);font-weight:600;padding:6px 12px;border-radius:99px;border:0;background:none}
-form{flex:1;max-width:360px;margin-left:auto}
-input{width:100%;font:inherit;color:var(--ink);padding:8px 14px;border:1px solid var(--line);border-radius:99px;background:var(--bg)}
-#live{width:92px;text-align:right;font-size:13px;font-weight:600;color:var(--ok)}
-#theme{width:36px;height:36px;opacity:0}
-main{max-width:1240px;margin:0 auto;padding:18px 20px 24px}
-[data-k=board] main{max-width:1480px}
-.sk{border-radius:14px;background:var(--line);height:70vh}
-@media(min-width:1000px){[data-k=board] .sk{background:linear-gradient(90deg,var(--line) 640px,#0000 0 658px,var(--line) 0)}}
-@media(max-width:860px){header{flex-wrap:wrap;gap:8px 14px;padding:10px 14px}form{order:9;flex-basis:100%;max-width:none}main{padding:14px 12px}}
-@media(max-width:639px){#live{margin-left:auto}input,#theme{min-height:44px}#theme{width:44px}nav{position:fixed;inset:auto 0 0;padding:4px 6px;background:var(--card);border-top:1px solid var(--line)}nav>*{display:grid!important;place-items:center;flex:1;min-height:52px}}
-</style><header><a href=#/><b>make</b>.fun<small>bounties</small></a><nav><a href=#/>Bounties</a><a href=#/builders>Builders</a><button hidden data-search>Search</button></nav><form><input type=search placeholder="Search bounties or @handle" aria-label=Search></form><span id=live>Live</span><button id=theme aria-label="Dark theme"></button></header><main><div class=sk></div></main>
+<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content="width=device-width"><title>make.fun bounties</title>
+<script type=module>import('./views/core.js') // route, cachedFetch, revalidate (ETag), meter</script>
+<script>try{document.documentElement.dataset.theme=localStorage.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'')}catch{}</script>
+<style>:root{--ac:#c2185b;--ink:#17151c;--bg:#f6f5f8;--card:#fff;--line:#e6e2ec}[data-theme=dark]{--ac:#f48fb1;--ink:#ecebf1;--bg:#121116;--card:#1c1b22;--line:#34313d}body{margin:0;font:15px/1.5 system-ui;color:var(--ink);background:var(--bg)}header{display:flex;align-items:center;gap:22px;height:61px;padding:0 max(20px,50% - 620px);background:var(--card);border-bottom:1px solid var(--line)}header>a{font-size:21px;color:var(--ink);font-weight:700;text-decoration:none}header b{color:var(--ac)}main{max-width:1240px;margin:0 auto;padding:12px 20px}.sk{border-radius:14px;background:var(--line);height:70vh}@media(max-width:860px){header{height:105px;padding:0 14px;flex-wrap:wrap;align-content:center;gap:8px}header:after{content:'';flex-basis:100%;height:40.5px}main{padding:14px 12px}}@media(max-width:639px){header{height:117px}header:after{height:44px}}</style>
+<header><a href=#/><b>make</b>.fun</a></header><main><div class=sk></div></main>

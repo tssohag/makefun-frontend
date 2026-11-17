@@ -1,11 +1,11 @@
-export { cachedFetch, revalidate, meter };
-// Shared by every view: show (index.html's route names the view the hash asks for and its literal import(), show draws
-// it), the API cache index.html declares (cachedFetch: 60 s in memory, one request in flight a path; revalidate: ETag)
-// and its meter, which show resets and drawMeter draws;
-// countdowns, live refresh, keyboard, theme, search; in-place row patching; formatting. The open-bounties list feeds
-// the board, the bounty pane and the leaderboard's header, and the bounty pane's Top 5 is the leaderboard's own
-// request, so going from a bounty to its leaderboard costs none.
-const { route, cachedFetch, revalidate, meter } = mf; // declared by index.html's scripts
+export { show, patchRows, renderTicker, liveRefresh, bindKeyboard, applyTheme, oddsFor };
+// Shared by every view: show (core.js's route names the view the hash asks for and its literal import(), show draws
+// it), the API cache core.js declares (cachedFetch: 60 s in memory, one request in flight a path; revalidate: ETag)
+// and its meter, which show resets and drawMeter draws; the header's controls and its live activity line; countdowns,
+// live refresh, keyboard, theme, search; in-place row patching; formatting. The open-bounties list feeds the board,
+// the bounty pane and the leaderboard's header, and the bounty pane's Top 10 is the leaderboard's own request, so going
+// from a bounty to its leaderboard costs none.
+import { route, cachedFetch, revalidate, meter } from './core.js';
 
 function tickCountdowns() {
   const now = Date.now();
@@ -21,6 +21,7 @@ function liveRefresh() {
   if (document.visibilityState !== 'visible') return;
   const p = show(true);
   if (p) p.then(() => (stamp(), tickCountdowns()), () => {});
+  background(renderTicker(true));
 }
 
 function bindKeyboard() {
@@ -94,6 +95,9 @@ const getBounty = (slug, f) => cachedFetch(`/competitions/${encodeURIComponent(s
 /** A bounty from the open list (shared and cached); a bounty that is not open any more costs its own request. */
 const bountyFor = async (slug, f) => (await getBounties(f).catch(() => null))?.items.find((b) => b.slug === slug) || getBounty(slug, f);
 /** The first rows in full plus every other row in brief (`rest`): the whole board, about a third of `rows=all`'s bytes. */
+/** Entries made across make.fun in the last hour, newest first (at most 20 listed, `total` up to 100): the header's
+ * ticker and the board's latest entries, one background request after the view is ready. */
+const getActivity = (f) => cachedFetch('/activity/entries', f);
 const getLeaderboard = (slug, f) => cachedFetch(`/competitions/${encodeURIComponent(slug)}/leaderboard?rows=first`, f);
 /** Work started after a view is ready (requests the meter counts as background); the screenshot hook waits for it. */
 const pending = new Set();
@@ -106,13 +110,36 @@ const later = [];
 function normalizeRows(lb) {
   if (lb.$rows) return lb.$rows;
   const k = lb.rank_key;
-  const row = (r, v, d, valid) => ({ id: r.submission_id, rank: r.rank, prize: r.prize_eligible === false ? null : r.prize_rank, handle: r.handle || '', title: r.title, house: r.house || r.baseline, at: r.received_at,
-    score: fmtScore(k, v, d), iv: r.interval ? `${fmtScore(k, +r.interval.low)} – ${fmtScore(k, +r.interval.high)}` : '', valid });
+  const lo = (r) => fmtScore(k, +r.interval.low).replace('%', ''), row = (r, v, d, valid) => ({ id: r.submission_id, rank: r.rank, prize: r.prize_eligible === false ? null : r.prize_rank, handle: r.handle || '', title: r.title, house: r.house || r.baseline, at: r.received_at,
+    image: r.image, score: fmtScore(k, v, d), iv: r.interval ? `${fmtScore(k, +r.interval.low)} – ${fmtScore(k, +r.interval.high)}` : '', ivs: r.interval ? `${lo(r)}–${fmtScore(k, +r.interval.high)}` : '', valid });
   return (lb.$rows = [...(lb.entries || []).map((e) => row(e, e.values?.[k], e.display?.[k], e.values?.valid ?? +(e.rank != null))),
     ...(lb.rest || []).map((r) => row(r, r.value, r.display, +(r.rank != null)))]);
 }
 
-const stamp = () => { document.querySelector('#live').textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`; };
+/** "just now", "3m ago", "5h ago", "2d ago": coarse, so markup that shows it changes at most once a minute. */
+function ago(iso) {
+  const m = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 6e4)), h = Math.floor(m / 60);
+  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : h < 48 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
+}
+
+/** The header's one-line live activity: how many entries the last hour brought and who entered what, newest first,
+ * turning over every 5 s. A background request after the first view is ready, refreshed with the live refresh. */
+async function renderTicker(fresh) {
+  const a = await activity(fresh);
+  if (fresh && a) mf.view?.mod.onActivity?.(a);
+  ticker.items = a?.entries || [], ticker.total = a?.total, ticker.i = 0;
+  turnTicker();
+}
+function turnTicker() {
+  const e = ticker.items[ticker.i++ % (ticker.items.length || 1)];
+  if (ticker.total == null) return;
+  setHTML($tick, `<b>${ticker.total >= 100 ? '100+' : num(ticker.total)}</b> entries in the last hour${e ? ` · ${userLink(e.handle)} entered <a href="#/bounty/${encodeURIComponent(e.competition.slug)}">${esc(e.competition.title)}</a> <i>${ago(e.created_at)}</i>` : ''}`);
+}
+const ticker = { items: [], total: null, i: 0 };
+/** The latest activity answer, shared by the ticker and the board (one request; `fresh` asks again). */
+const activity = (fresh) => (fresh || !ticker.p ? (ticker.p = getActivity(fresh).catch(() => null)) : ticker.p);
+
+const stamp = () => { $live.textContent = `Live · ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`; };
 function timeLeft(ms) {
   if (!(ms > 0)) return 'Closed';
   const s = Math.floor(ms / 1e3), d = Math.floor(s / 86400), p = (n) => String(n).padStart(2, '0');
@@ -141,7 +168,11 @@ const userLink = (h) => `<a href="#/u/${encodeURIComponent(h)}">@${esc(h)}</a>`;
 const none = async (el) => { el.innerHTML = notice('Page not found', 'That address is not a page of this app.'); };
 const focusSearch = () => (scrollTo(0, 0), $q.focus());
 
-const $q = document.querySelector('header input'), $theme = document.querySelector('#theme'), $main = document.querySelector('main');
+/** The header's controls, put in the shell's header once the stylesheet is in (the shell reserves the header's height). */
+const $bar = document.createElement('template');
+$bar.innerHTML = `<nav><a href="#/">Bounties</a><a href="#/builders">Builders</a><button type="button" hidden data-search>Search</button></nav><p id="tick"></p>
+<form role="search"><input type="search" placeholder="Search bounties or @handle" aria-label="Search"></form><span id="live">Live</span><button type="button" id="theme" aria-label="Dark theme"></button>`;
+const $q = $bar.content.querySelector('input'), $theme = $bar.content.querySelector('#theme'), $live = $bar.content.querySelector('#live'), $tick = $bar.content.querySelector('#tick'), $main = document.querySelector('main');
 const darkScheme = matchMedia('(prefers-color-scheme: dark)');
 
 /** The meter bar: what the view on screen cost, counted by cachedFetch and revalidate, and the build's first-load facts. */
@@ -151,7 +182,7 @@ function drawMeter(m) {
     ? `<span><b>${m.req}</b> request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> cached · <b>${m.etag}</b> unchanged · ${size}${ms}${m.bg ? ` · <b>+${m.bg}</b> bg` : ''}</span>`
     : `<span>this view: <b>${m.req}</b> API request${m.req === 1 ? '' : 's'} · <b>${m.mem}</b> from cache · <b>${m.etag}</b> unchanged (ETag) · ${size} ${m.json ? 'JSON' : m.wire ? 'transferred' : 'downloaded'}${m.patched ? ` · <b>${num(m.patched)}</b> row${m.patched === 1 ? '' : 's'} patched` : ''}${m.ms ? ` · ready in <b>${num(m.ms)} ms</b>` : ''}${m.bg ? ` · <b>+${m.bg}</b> background (${kbs(m.bkb)})` : ''}</span><i>${BUILD}</i>`);
 }
-const BUILD = '1-file first load (2,191 B gzip) · 4 views by import() · ETag cache · virtual leaderboard';
+const BUILD = '1-file first load (769 B gzip) · core + 4 views by import() · ETag cache · virtual leaderboard';
 const phone = matchMedia('(max-width: 639px)');
 const $meter = document.createElement('footer'); // put on the page with the first view, once the stylesheet is in
 $meter.className = 'meter';
@@ -171,9 +202,10 @@ async function show(live) {
   catch (e) { el.innerHTML = '<p class=empty><button data-retry>Retry</button>'; el.firstChild.prepend(`Could not load: ${e.message} `); }
   if (my === seq) (view = { el, path, kind, mod, run }), $main.replaceChildren(el), $meter.isConnected || document.body.append($meter), ready(my);
 }
-const styled = import('./style.js');
+const styled = import('./style.js').then(() => document.querySelector('header').append($bar.content));
 let view, seq = 0;
-Object.defineProperties(mf, { show: { value: show }, draw: { value: drawMeter }, view: { get: () => view } });
+meter.draw = drawMeter;
+Object.defineProperties(mf, { show: { value: show }, view: { get: () => view } });
 
 /** The view is on screen: the meter's time to ready, the nav, the title, the Live stamp, then the background work. */
 function ready(my) {
@@ -181,6 +213,7 @@ function ready(my) {
   const n = ++readyN;
   meter.ms = Math.round(performance.now() - meter.t0), meter.show();
   for (const fn of later.splice(0)) fn();
+  if (n === 1) background(renderTicker());
   // The screenshot hook waits two frames (lazy loads start when their section is in view) and for the work they start.
   requestAnimationFrame(() => requestAnimationFrame(() => Promise.allSettled(pending).then(() => { if (n === readyN && meter.ms) self.__shotReady = true; })));
   const v = mf.view?.el, k = mf.view?.kind;
@@ -211,9 +244,10 @@ darkScheme.addEventListener('change', () => {
 applyTheme();
 bindKeyboard();
 setInterval(tickCountdowns, 1e3);
+setInterval(turnTicker, 5e3);
 setInterval(liveRefresh, 60e3);
 onhashchange = () => show();
 show();
 
-export { tickCountdowns, liveRefresh, bindKeyboard, applyTheme, patchRows, setHTML, oddsFor, paidPlaces, placeRuns, placeLabel, getBounties, getBounty, bountyFor, getLeaderboard, background, afterReady, normalizeRows,
-  show, esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, shortDate, fmtScore, imagesDecoded, avatar, crumbs, userLink, none };
+export { cachedFetch, revalidate, meter, tickCountdowns, setHTML, paidPlaces, placeRuns, placeLabel, getBounties, getBounty, bountyFor, getLeaderboard, background, afterReady, normalizeRows,
+  getActivity, activity, ago, esc, num, money, pot, countdown, timeBar, perEntry, notice, ordinal, fmtDate, shortDate, fmtScore, imagesDecoded, avatar, crumbs, userLink, none };
