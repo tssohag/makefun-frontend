@@ -187,7 +187,7 @@ const phone = matchMedia('(max-width: 639px)');
 const $meter = document.createElement('footer'); // put on the page with the first view, once the stylesheet is in
 $meter.className = 'meter';
 
-/** Draws the view index.html's route names, put on screen only once its module and the stylesheet are in (the skeleton
+/** Draws the view core.js's route names, put on screen only once its module and the stylesheet are in (the skeleton
  * holds its place until then); picking another bounty on the board repaints the detail pane only; live: refreshes the
  * view on screen in place. */
 async function show(live) {

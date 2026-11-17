@@ -16,7 +16,7 @@ async function renderBoard(el, { a, b, query }, live) {
 }
 
 /** Paints the pane from the board's own list (no request); only a bounty that is not open any more costs its own. The
- * Top 5 is not part of the first paint: it fills in the background once the view is ready (a live refresh awaits it). */
+ * Top 10 is not part of the first paint: it fills in the background once the view is ready (a live refresh awaits it). */
 async function renderBountyDetail(pane, slug, live) {
   let b = boardItem(slug);
   if (!live && pane.dataset.slug !== slug) {

@@ -1,6 +1,6 @@
 export { renderLeaderboard, virtualRows, leaderboardHeader };
 // #/bounty/<slug>/leaderboard: every row comes in `?rows=first` (the first rows in full, the rest in brief), the same
-// cached request the bounty pane's Top 5 made; the header comes from the open-bounties list the board made. So from a
+// cached request the bounty pane's Top 10 made; the header comes from the open-bounties list the board made. So from a
 // bounty this view costs no request, and loaded directly it costs those two. Drawn as a virtual list: only the rows in
 // view, plus a few, are in the DOM, reused as it scrolls and patched in place on refresh.
 import { bountyFor, getLeaderboard, normalizeRows, patchRows, setHTML, paidPlaces, placeRuns, placeLabel, oddsFor, esc, notice, money, num, pot, countdown, timeBar,
